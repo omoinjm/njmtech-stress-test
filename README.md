@@ -53,6 +53,14 @@ The free finding is the **most severe DIY-friendly** one (e.g. a missing redirec
 - `global_fetch_strictly_public` blocks the Worker from fetching private/internal IPs (an SSRF backstop on top of `lib/scanner/net.ts`).
 - On Workers, certificate expiry comes from `node:tls` when available, otherwise from Certificate Transparency logs (crt.sh).
 
+## Content (Sanity)
+Blog posts, authors, categories and the terms page live in Sanity: project `w1uoie7f` (organization *njmtech-offical*), dataset `production` (public; drafts stay private).
+- **Edit / publish:** https://njmtech-security.sanity.studio/ (the schema is MCP-managed; there's no Studio code in this repo).
+- **Site:** `/blog`, `/blog/[slug]`, `/blog/rss.xml`, `sitemap.xml` and `/terms` read published content through Sanity's CDN. Admins see draft previews (with a banner and `noindex`) through `SANITY_API_READ_TOKEN`.
+- **Fix guides:** a post's "Fixes scanner findings" field links matching report findings to it ("How to fix this, step by step →"). If Sanity is unreachable, the links are hidden; reports never break.
+- **Tokens** (Infisical `env-vault:/njmtech-security`): `SANITY_API_READ_TOKEN` (also a Worker secret) and `SANITY_API_WRITE_TOKEN` (scripts only, e.g. `pnpm sanity:seed`).
+- Scans, findings, payments and leads stay in D1. That's transactional data, not content.
+
 ## Local development
 ```bash
 cp .dev.vars.example .dev.vars && cp .env.example .env.local   # fill SESSION_SECRET (+ keys from Infisical)

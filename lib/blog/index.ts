@@ -1,48 +1,54 @@
-import { AUTHORS } from "./authors";
-import { post as blackFriday } from "./posts/black-friday-online-store-readiness";
-import type { BlogPost } from "./types";
+import { sanityFetch } from "../sanity/client";
+import { ADMIN_POSTS_QUERY, FIX_GUIDES_QUERY, POST_QUERY, POSTS_QUERY, SITEMAP_QUERY } from "./queries";
+import type { FixGuide, Post, PostCard } from "./types";
 
-export type { BlogPost } from "./types";
-
-/** Register new posts here (newest first is not required; lists are sorted by date). */
-const ALL: BlogPost[] = [blackFriday];
+export type { FixGuide, Post, PostCard } from "./types";
 
 export const SITE_URL = "https://security.njmtech.co.za";
 
-const byDateDesc = (a: BlogPost, b: BlogPost) => b.publishedAt.localeCompare(a.publishedAt);
+/** Published posts only: public index, sitemap and RSS. */
+export const publishedPosts = () => sanityFetch<PostCard[]>(POSTS_QUERY);
 
-/** Published posts only: what the public index, sitemap, RSS and report links ever see. */
-export const publishedPosts = () => ALL.filter((p) => !p.draft).sort(byDateDesc);
-
-/** Drafts are visible to admins (on any environment) and in local dev, never listed publicly. */
-export function getPost(slug: string, opts: { includeDrafts: boolean }): BlogPost | null {
-  const p = ALL.find((x) => x.slug === slug);
-  if (!p || (p.draft && !opts.includeDrafts)) return null;
-  return p;
+/** Admins (and local dev) also see drafts, served fresh with the read token. */
+export async function getPost(slug: string, opts: { includeDrafts: boolean }): Promise<Post | null> {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
+  const post = await sanityFetch<Post | null>(POST_QUERY, { slug }, { preview: opts.includeDrafts });
+  if (!post) return null;
+  if (!opts.includeDrafts && (post.isDraft || Date.parse(post.publishedAt) > Date.now())) return null;
+  return post;
 }
 
-export const allPostsForAdmin = () => [...ALL].sort(byDateDesc);
+export type AdminPostStatus = "draft" | "scheduled" | "live";
 
-export const authorOf = (p: BlogPost) => AUTHORS[p.authorId] ?? AUTHORS.founder;
-
-/** "How to fix this →" target for a scanner finding: the newest published post that covers it. */
-export function fixGuideFor(findingKey: string): { slug: string; title: string } | null {
-  const p = publishedPosts().find((x) => x.fixesFindings?.includes(findingKey));
-  return p ? { slug: p.slug, title: p.title } : null;
+/** Every post (drafts included) with a computed status for the admin list. */
+export async function allPostsForAdmin(): Promise<(PostCard & { status: AdminPostStatus })[]> {
+  const now = Date.now();
+  const posts = await sanityFetch<PostCard[]>(ADMIN_POSTS_QUERY, {}, { preview: true });
+  return posts.map((p) => ({ ...p, status: p.isDraft ? "draft" : Date.parse(p.publishedAt) > now ? "scheduled" : "live" }));
 }
 
-/** Map of finding key → guide for every key that has one (small; safe to send to the client). */
-export function fixGuideMap(): Record<string, { slug: string; title: string }> {
-  const out: Record<string, { slug: string; title: string }> = {};
-  for (const p of publishedPosts().slice().reverse()) for (const k of p.fixesFindings ?? []) out[k] = { slug: p.slug, title: p.title };
+export const sitemapPosts = () =>
+  sanityFetch<{ slug: string; publishedAt: string; updatedAt?: string | null }[]>(SITEMAP_QUERY);
+
+/** Newest published post wins for each finding key. Pure: easy to test. */
+export function buildFixGuideMap(rows: { slug: string; title: string; fixesFindings: string[] | null }[]): Record<string, FixGuide> {
+  const out: Record<string, FixGuide> = {};
+  for (const r of rows) for (const k of r.fixesFindings ?? []) if (!out[k]) out[k] = { slug: r.slug, title: r.title };
   return out;
 }
 
-/** Validate registry at import time: unique slugs, URL-safe, valid dates. */
-const seen = new Set<string>();
-for (const p of ALL) {
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(p.slug)) throw new Error(`Bad blog slug: ${p.slug}`);
-  if (seen.has(p.slug)) throw new Error(`Duplicate blog slug: ${p.slug}`);
-  if (Number.isNaN(Date.parse(p.publishedAt))) throw new Error(`Bad publishedAt for ${p.slug}`);
-  seen.add(p.slug);
+/**
+ * finding key → published fix guide. Never throws: reports must keep working if Sanity is
+ * unreachable (the links just don't show).
+ */
+export async function fixGuideMap(): Promise<Record<string, FixGuide>> {
+  try {
+    return buildFixGuideMap(await sanityFetch<{ slug: string; title: string; fixesFindings: string[] | null }[]>(FIX_GUIDES_QUERY));
+  } catch (e) {
+    console.error("fix guide lookup failed", e);
+    return {};
+  }
 }
+
+/** Rough reading time (~5.5 chars/word, 220 words/min). */
+export const readingMinutes = (chars: number | null | undefined) => Math.max(1, Math.round((chars ?? 0) / 5.5 / 220));

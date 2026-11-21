@@ -1,46 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { allPostsForAdmin, fixGuideFor, fixGuideMap, getPost, publishedPosts } from "@/lib/blog";
-import { CATALOG } from "@/lib/findings/catalog";
-import { readingMinutes, renderPost } from "@/lib/blog/render";
+import { buildFixGuideMap, getPost, readingMinutes } from "@/lib/blog";
+import { headingId, isExternal, tableOfContents } from "@/lib/blog/pt-utils";
 
-describe("blog registry", () => {
-  it("drafts never appear in public lists, fix links, or public lookups", () => {
-    const drafts = allPostsForAdmin().filter((p) => p.draft);
-    for (const d of drafts) {
-      expect(publishedPosts().some((p) => p.slug === d.slug)).toBe(false);
-      expect(getPost(d.slug, { includeDrafts: false })).toBeNull();
-      expect(getPost(d.slug, { includeDrafts: true })?.slug).toBe(d.slug);
-      for (const k of d.fixesFindings ?? []) {
-        expect(fixGuideFor(k)?.slug).not.toBe(d.slug);
-        expect(fixGuideMap()[k]?.slug).not.toBe(d.slug);
-      }
-    }
-  });
-  it("every fixesFindings key exists in the scanner catalog", () => {
-    for (const p of allPostsForAdmin()) for (const k of p.fixesFindings ?? []) expect(CATALOG[k], `${p.slug}: ${k}`).toBeDefined();
-  });
-  it("every post has a meta description of sensible length and a CTA marker", () => {
-    for (const p of allPostsForAdmin()) {
-      expect(p.description.length, p.slug).toBeGreaterThan(70);
-      expect(p.description.length, p.slug).toBeLessThan(200);
-      expect(p.body, p.slug).toContain("{{SCAN_CTA}}");
-    }
+describe("fix-guide map", () => {
+  it("maps each finding key to the newest post that covers it (rows arrive newest first)", () => {
+    const m = buildFixGuideMap([
+      { slug: "new-hsts-guide", title: "New", fixesFindings: ["headers.hsts-missing"] },
+      { slug: "old-headers-guide", title: "Old", fixesFindings: ["headers.hsts-missing", "headers.clickjacking"] },
+      { slug: "no-keys", title: "None", fixesFindings: null },
+    ]);
+    expect(m["headers.hsts-missing"].slug).toBe("new-hsts-guide");
+    expect(m["headers.clickjacking"].slug).toBe("old-headers-guide");
+    expect(Object.keys(m)).toHaveLength(2);
   });
 });
 
-describe("renderPost", () => {
-  const { chunks, toc } = renderPost(
-    "Intro with [ext](https://example.com) and [own](https://security.njmtech.co.za/blog).\n\n## First section\n\ntext\n\n{{SCAN_CTA}}\n\n## Second: **bold** & more\n\n| a | b |\n|---|---|\n| 1 | 2 |",
-  );
-  it("splits at the CTA marker", () => expect(chunks).toHaveLength(2));
-  it("gives h2s stable ids and builds a TOC", () => {
-    expect(toc.map((t) => t.id)).toEqual(["first-section", "second-bold-more"]);
-    expect(chunks[0]).toContain('<h2 id="first-section">');
+describe("Portable Text helpers", () => {
+  const body = [
+    { _type: "block", _key: "a", style: "h2", children: [{ _type: "span", text: "Why stores crash: the " }, { _type: "span", text: "basics" }] },
+    { _type: "block", _key: "b", style: "normal", children: [{ _type: "span", text: "text" }] },
+    { _type: "scanCta", _key: "c" },
+    { _type: "block", _key: "d", style: "h2", children: [{ _type: "span", text: "What to fix first (in order)" }] },
+  ];
+  it("builds a TOC from h2 blocks with stable ids", () => {
+    expect(tableOfContents(body as never)).toEqual([
+      { id: "why-stores-crash-the-basics", text: "Why stores crash: the basics" },
+      { id: "what-to-fix-first-in-order", text: "What to fix first (in order)" },
+    ]);
+    expect(headingId("Don't forget security!")).toBe("don-t-forget-security");
   });
-  it("opens external links safely, keeps own links in-tab", () => {
-    expect(chunks[0]).toContain('href="https://example.com" target="_blank" rel="noopener"');
-    expect(chunks[0]).not.toContain('href="https://security.njmtech.co.za/blog" target');
+  it("treats only other sites as external", () => {
+    expect(isExternal("https://example.com/x")).toBe(true);
+    expect(isExternal("https://security.njmtech.co.za/blog")).toBe(false);
+    expect(isExternal("/blog/x")).toBe(false);
   });
-  it("renders GFM tables", () => expect(chunks[1]).toContain("<table>"));
-  it("estimates reading time", () => expect(readingMinutes("word ".repeat(1100))).toBe(5));
+  it("estimates reading time", () => {
+    expect(readingMinutes(null)).toBe(1);
+    expect(readingMinutes(5.5 * 220 * 5)).toBe(5);
+  });
+});
+
+describe("getPost", () => {
+  it("rejects malformed slugs without querying Sanity", async () => {
+    expect(await getPost("../etc/passwd", { includeDrafts: true })).toBeNull();
+    expect(await getPost("Bad Slug", { includeDrafts: false })).toBeNull();
+  });
 });

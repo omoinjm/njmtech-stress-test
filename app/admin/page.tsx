@@ -40,6 +40,7 @@ async function Inner() {
     .innerJoin(t.scans, eq(t.payments.scanId, t.scans.id))
     .orderBy(desc(t.payments.createdAt))
     .limit(100);
+  const posts = await allPostsForAdmin().catch(() => []);
   const revenue = payments.filter((x) => x.p.status === "paid" && x.p.mode !== "test").reduce((sum, x) => sum + x.p.amountCents, 0);
 
   return (
@@ -136,14 +137,20 @@ async function Inner() {
         </div>
       </Card>
       <Card>
-        <h2 className="mb-3 font-semibold">Blog posts</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold">Blog posts</h2>
+          <a href="https://njmtech-security.sanity.studio/" target="_blank" rel="noopener" className="text-sm text-emerald-600 underline">Open Sanity Studio →</a>
+        </div>
         <ul className="divide-y divide-black/5 text-sm dark:divide-white/10">
-          {allPostsForAdmin().map((p) => (
+          {posts.map((p) => (
             <li key={p.slug} className="flex items-center justify-between gap-3 py-2">
               <Link href={`/blog/${p.slug}`} className="hover:underline">{p.title}</Link>
-              <span className={p.draft ? "text-amber-600" : "text-emerald-600"}>{p.draft ? "draft" : `live · ${p.publishedAt}`}</span>
+              <span className={p.status === "live" ? "text-emerald-600" : "text-amber-600"}>
+                {p.status === "live" ? `live · ${p.publishedAt.slice(0, 10)}` : p.status}
+              </span>
             </li>
           ))}
+          {posts.length === 0 && <li className="py-2 text-slate-500">No posts yet.</li>}
         </ul>
       </Card>
     </div>

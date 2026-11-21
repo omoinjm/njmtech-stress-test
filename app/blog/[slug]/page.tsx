@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Fragment } from "react";
+import { cache } from "react";
 import { BlogCta } from "@/components/blog-cta";
+import { RichText } from "@/components/portable-text";
 import { getUser } from "@/lib/auth";
-import { authorOf, getPost, SITE_URL } from "@/lib/blog";
-import { readingMinutes, renderPost } from "@/lib/blog/render";
+import { getPost, readingMinutes, SITE_URL } from "@/lib/blog";
+import { tableOfContents } from "@/lib/blog/pt-utils";
 
 type Props = PageProps<"/blog/[slug]">;
 
-async function load(slug: string) {
+/** One Sanity fetch per request, shared by generateMetadata and the page. */
+const load = cache(async (slug: string) => {
   const user = await getUser().catch(() => null);
   const includeDrafts = !!user?.isAdmin || process.env.NODE_ENV !== "production";
   return getPost(slug, { includeDrafts });
-}
+});
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -21,10 +23,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!p) return { title: "Not found" };
   const url = `${SITE_URL}/blog/${p.slug}`;
   return {
-    title: `${p.title} | NJM Tech Security`,
+    title: `${p.seoTitle || p.title} | NJM Tech Security`,
     description: p.description,
     alternates: { canonical: url },
-    robots: p.draft ? { index: false, follow: false } : undefined,
+    robots: p.isDraft ? { index: false, follow: false } : undefined,
     openGraph: { type: "article", url, title: p.title, description: p.description, publishedTime: p.publishedAt, modifiedTime: p.updatedAt ?? p.publishedAt },
   };
 }
@@ -35,9 +37,9 @@ export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
   const p = await load(slug);
   if (!p) notFound();
-  const author = authorOf(p);
-  const { chunks, toc } = renderPost(p.body);
+  const toc = tableOfContents(p.body);
   const url = `${SITE_URL}/blog/${p.slug}`;
+  const authorId = `${SITE_URL}/#author-${p.author?.slug ?? "team"}`;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -50,12 +52,20 @@ export default async function BlogPostPage({ params }: Props) {
         datePublished: p.publishedAt,
         dateModified: p.updatedAt ?? p.publishedAt,
         mainEntityOfPage: url,
-        author: { "@id": `${SITE_URL}/#author-${author.id}` },
+        author: { "@id": authorId },
         publisher: { "@id": `${SITE_URL}/#org` },
-        keywords: p.tags.join(", "),
+        keywords: (p.tags ?? []).join(", "),
         inLanguage: "en-ZA",
       },
-      { "@type": "Person", "@id": `${SITE_URL}/#author-${author.id}`, name: author.name, jobTitle: author.role, description: author.bio, worksFor: { "@id": `${SITE_URL}/#org` } },
+      {
+        "@type": "Person",
+        "@id": authorId,
+        name: p.author?.name ?? "NJM Tech Security",
+        jobTitle: p.author?.role ?? undefined,
+        description: p.author?.bio ?? undefined,
+        sameAs: p.author?.sameAs?.length ? p.author.sameAs : undefined,
+        worksFor: { "@id": `${SITE_URL}/#org` },
+      },
       { "@type": "Organization", "@id": `${SITE_URL}/#org`, name: "NJM Tech", url: "https://njmtech.co.za", brand: { "@type": "Brand", name: "NJM Tech Security" } },
       {
         "@type": "BreadcrumbList",
@@ -70,18 +80,23 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <article className="mx-auto max-w-3xl">
-      {p.draft && (
+      {p.isDraft && (
         <p className="mb-6 rounded-md border-2 border-amber-500 px-3 py-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-          📝 Draft: only you (admin) can see this page. Set <code>draft: false</code> in the post file and merge to publish.
+          📝 Draft preview: only admins can see this. Publish it in{" "}
+          <a href="https://njmtech-security.sanity.studio/" className="underline" target="_blank" rel="noopener">Sanity Studio</a> to make it live.
         </p>
       )}
       <nav className="mb-4 text-sm text-slate-500">
-        <Link href="/blog" className="hover:underline">Blog</Link> /
+        <Link href="/blog" className="hover:underline">Blog</Link>
+        {p.category && <> / {p.category.title}</>}
       </nav>
       <h1 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{p.title}</h1>
       <p className="mt-3 text-sm text-slate-500">
-        By <strong className="text-slate-700 dark:text-slate-300">{author.name}</strong>, {author.role} · {fmt(p.publishedAt)}
-        {p.updatedAt && ` · Updated ${fmt(p.updatedAt)}`} · {readingMinutes(p.body)} min read
+        {p.author && (
+          <>By <strong className="text-slate-700 dark:text-slate-300">{p.author.name}</strong>{p.author.role ? `, ${p.author.role}` : ""} · </>
+        )}
+        {fmt(p.publishedAt)}
+        {p.updatedAt && ` · Updated ${fmt(p.updatedAt)}`} · {readingMinutes(p.chars)} min read
       </p>
 
       {toc.length > 2 && (
@@ -96,21 +111,18 @@ export default async function BlogPostPage({ params }: Props) {
       )}
 
       <div className="prose-blog mt-8">
-        {chunks.map((html, i) => (
-          <Fragment key={i}>
-            <div dangerouslySetInnerHTML={{ __html: html }} />
-            {i < chunks.length - 1 && <BlogCta slug={p.slug} />}
-          </Fragment>
-        ))}
+        <RichText value={p.body} slug={p.slug} />
       </div>
 
       <BlogCta slug={p.slug} variant="end" />
 
-      <footer className="mt-8 rounded-xl border border-black/10 p-5 text-sm dark:border-white/10">
-        <p className="font-semibold">{author.name}</p>
-        <p className="text-slate-500">{author.role}</p>
-        <p className="mt-2 text-slate-600 dark:text-slate-300">{author.bio}</p>
-      </footer>
+      {p.author && (
+        <footer className="mt-8 rounded-xl border border-black/10 p-5 text-sm dark:border-white/10">
+          <p className="font-semibold">{p.author.name}</p>
+          {p.author.role && <p className="text-slate-500">{p.author.role}</p>}
+          {p.author.bio && <p className="mt-2 text-slate-600 dark:text-slate-300">{p.author.bio}</p>}
+        </footer>
+      )}
 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
     </article>

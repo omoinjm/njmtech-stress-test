@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui";
-import { authorOf, publishedPosts, SITE_URL } from "@/lib/blog";
-import { readingMinutes } from "@/lib/blog/render";
+import { publishedPosts, readingMinutes, SITE_URL } from "@/lib/blog";
 
 export const metadata: Metadata = {
   title: "Website Security Blog | NJM Tech Security",
@@ -12,8 +11,8 @@ export const metadata: Metadata = {
 
 const fmt = (d: string) => new Date(d).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 
-export default function BlogIndex() {
-  const posts = publishedPosts();
+export default async function BlogIndex() {
+  const posts = await publishedPosts();
   return (
     <div className="grid gap-8">
       <header>
@@ -35,7 +34,8 @@ export default function BlogIndex() {
             <li key={p.slug}>
               <Card>
                 <p className="text-xs text-slate-500">
-                  {fmt(p.publishedAt)} · {readingMinutes(p.body)} min read · {authorOf(p).name}
+                  {fmt(p.publishedAt)} · {readingMinutes(p.chars)} min read{p.author ? ` · ${p.author.name}` : ""}
+                  {p.category ? ` · ${p.category.title}` : ""}
                 </p>
                 <h2 className="mt-1 text-xl font-semibold">
                   <Link href={`/blog/${p.slug}`} className="hover:underline">{p.title}</Link>
