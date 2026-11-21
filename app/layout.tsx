@@ -9,7 +9,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SiteShield: Website Security & Stress Check",
+  title: "NJM Tech Security: Website Security & Stress Check",
   description: "Find security holes and performance problems on your website, online store or web app before attackers do.",
 };
 
@@ -41,7 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             <Link href="/" className="flex items-center gap-2 font-semibold">
               <span className="grid h-7 w-7 place-items-center rounded-md bg-emerald-600 text-white">◆</span>
-              SiteShield
+              NJM Tech Security
             </Link>
             <Suspense fallback={<span className="h-5 w-24" />}>
               <NavUser />

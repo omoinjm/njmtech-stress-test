@@ -1,7 +1,7 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { createDb } from "../lib/db";
 import type { LoadTestSummary } from "../lib/db/schema";
-import { CHECK_KEYS } from "../lib/scanner/check-keys";
+import { checkKeysFor } from "../lib/scanner/check-keys";
 import { loadFindings, planShards, runLoadRaw, type ShardPlan } from "../lib/scanner/checks/load-test";
 import { assertPublicHost } from "../lib/scanner/net";
 import {
@@ -23,7 +23,7 @@ export class ScanWorkflow extends WorkflowEntrypoint<CloudflareEnv, { scanId: st
     const db = createDb(this.env.DB);
 
     const target = await step.do("mark running", () => markRunning(db, scanId));
-    const { home, error } = await step.do("fetch homepage", { retries: { limit: 1, delay: "5 seconds" } }, () =>
+    const { home, error, extra } = await step.do("fetch homepage", { retries: { limit: 1, delay: "5 seconds" } }, () =>
       fetchHomeSafe(target.origin, target.allowPrivate),
     );
     if (!home) {
@@ -33,9 +33,9 @@ export class ScanWorkflow extends WorkflowEntrypoint<CloudflareEnv, { scanId: st
 
     const args = { origin: target.origin, hostname: target.hostname, home, allowPrivate: target.allowPrivate };
     const results = await Promise.all(
-      CHECK_KEYS.map((key) => step.do(`check ${key}`, { retries: { limit: 2, delay: "5 seconds" } }, () => runCheckSafe(db, scanId, key, args))),
+      checkKeysFor(target.kind).map((key) => step.do(`check ${key}`, { retries: { limit: 2, delay: "5 seconds" } }, () => runCheckSafe(db, scanId, key, args))),
     );
-    const raw = results.flat();
+    const raw = [...results.flat(), ...(extra ?? [])];
 
     let load: LoadTestSummary | null = null;
     if (target.includeLoadTest) {

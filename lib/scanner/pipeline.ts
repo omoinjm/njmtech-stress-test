@@ -2,17 +2,25 @@
 // a durable step; local `next dev` runs them in-process via runScanInline().
 import { eq, sql } from "drizzle-orm";
 import { t, type DB } from "../db";
-import type { LoadTestSummary } from "../db/schema";
+import type { LoadTestSummary, ScanKind } from "../db/schema";
 import { sendEmail } from "../email";
 import { env } from "../env";
 import { countBySeverity } from "../report/teaser";
-import { CHECK_KEYS } from "./check-keys";
+import { checkKeysFor } from "./check-keys";
 import { loadFindings, runLoadTest, summarize, type RawLoad } from "./checks/load-test";
 import { fetchHome, runCheck, toFindings } from "./index";
 import { assertPublicHost } from "./net";
 import type { HttpResult, RawFinding } from "./types";
 
-export type Target = { origin: string; hostname: string; includeLoadTest: boolean; allowPrivate: boolean; email: string };
+export type Target = {
+  origin: string;
+  hostname: string;
+  kind: ScanKind;
+  includeLoadTest: boolean;
+  allowPrivate: boolean;
+  email: string;
+  accessToken: string | null;
+};
 export type CheckArgs = { origin: string; hostname: string; home: HttpResult; allowPrivate: boolean };
 
 export async function markRunning(db: DB, scanId: string): Promise<Target> {
@@ -21,17 +29,38 @@ export async function markRunning(db: DB, scanId: string): Promise<Target> {
   return {
     origin: scan.origin,
     hostname: new URL(scan.origin).hostname,
-    includeLoadTest: scan.includeLoadTest,
+    kind: scan.kind,
+    // Defense in depth: a public scan can never include the load test.
+    includeLoadTest: scan.kind === "deep" && scan.includeLoadTest,
+    accessToken: scan.accessToken,
     allowPrivate: env.allowPrivateTargets(),
     email: user!.email,
   };
 }
 
-export async function fetchHomeSafe(origin: string, allowPrivate: boolean): Promise<{ home?: HttpResult; error?: string }> {
+/**
+ * Fetch the homepage. If HTTPS fails but plain HTTP works (typically a broken certificate, which
+ * the Workers runtime refuses outright), scan over HTTP and report the certificate problem.
+ */
+export async function fetchHomeSafe(
+  origin: string,
+  allowPrivate: boolean,
+): Promise<{ home?: HttpResult; error?: string; extra?: RawFinding[] }> {
   try {
     return { home: await fetchHome(origin, allowPrivate) };
   } catch (e) {
-    return { error: (e as Error).message };
+    const error = (e as Error).message;
+    const u = new URL(origin);
+    if (u.protocol === "https:" && !u.port) {
+      try {
+        const home = await fetchHome(`http://${u.host}`, allowPrivate);
+        return {
+          home,
+          extra: [{ key: "tls.cert-invalid", evidence: `HTTPS connection to ${u.host} failed (${error}); the site only loaded over plain HTTP.` }],
+        };
+      } catch {}
+    }
+    return { error };
   }
 }
 
@@ -86,12 +115,12 @@ export async function notify(db: DB, scanId: string, target: Target) {
   await sendEmail({
     to: target.email,
     subject: `Your security scan of ${target.hostname} is ready`,
-    text: `We found ${rows.length} issue(s) on ${target.origin} (${summary}).\n\nView your report and a free fix: ${env.appUrl()}/scans/${scanId}\n\nNJM Tech Security`,
+    text: `We found ${rows.length} issue(s) on ${target.origin} (${summary}).\n\nView your report and a free fix: ${env.appUrl()}/scans/${scanId}${target.accessToken ? `?t=${target.accessToken}` : ""}\n\nNJM Tech Security`,
   });
   for (const admin of env.adminEmails()) {
     await sendEmail({
       to: admin,
-      subject: `[Scan] ${target.hostname}: ${summary}`,
+      subject: `[${target.kind === "deep" ? "Deep scan" : "Public scan"}] ${target.hostname}: ${summary}`,
       text: `Customer: ${target.email}\nSite: ${target.origin}\nFull report: ${env.appUrl()}/admin/scans/${scanId}`,
     });
   }
@@ -100,10 +129,11 @@ export async function notify(db: DB, scanId: string, target: Target) {
 /** Local-dev runner (no Workflow binding): same pipeline, single-process load test. */
 export async function runScanInline(db: DB, scanId: string) {
   const target = await markRunning(db, scanId);
-  const { home, error } = await fetchHomeSafe(target.origin, target.allowPrivate);
+  const { home, error, extra } = await fetchHomeSafe(target.origin, target.allowPrivate);
   if (!home) return failScan(db, scanId, `Could not reach ${target.origin}: ${error}`);
   const args = { origin: target.origin, hostname: target.hostname, home, allowPrivate: target.allowPrivate };
-  const raw = (await Promise.all(CHECK_KEYS.map((k) => runCheckSafe(db, scanId, k, args)))).flat();
+  const raw = (await Promise.all(checkKeysFor(target.kind).map((k) => runCheckSafe(db, scanId, k, args)))).flat();
+  raw.push(...(extra ?? []));
   let load: LoadTestSummary | null = null;
   if (target.includeLoadTest) {
     try {

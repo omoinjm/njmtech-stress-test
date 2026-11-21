@@ -6,31 +6,41 @@ Business owners scan **their own** website, online store or web app. They get a 
 
 ## How it works
 
-1. **Landing page**: the visitor enters their site and email and gets a magic sign-in link.
-2. **Ownership verification** (required before any scan): DNS TXT `_njmtech-verify.<host>` or a file at `/.well-known/njmtech-security-verify.txt`. Verification expires after 30 days.
-3. **Scan**: a durable Vercel Workflow runs 9 non-destructive checks in parallel, plus an optional capped stress test.
-4. **Teaser** (`/scans/[id]`): redaction happens **on the server**. Locked findings send only `id/severity/title`, so nothing can be recovered from page source.
-5. **Pay to unlock** (Yoco, default R499 via `REPORT_PRICE_CENTS`): every finding with evidence + fixes, PDF export.
-6. **Pay for fixes**: the customer requests a quote; you set a fixed price in `/admin`; they get an email + a "Pay R… and fix my site" button (Yoco).
-   Payments are confirmed server-side (webhook signature + `GET /api/checkouts/{id}`); the browser redirect is never trusted.
+1. **Free public scan, instant**: the visitor enters their site and email on the landing page. No sign-up, no verification.
+   Only **public** checks run, meaning what any visitor's browser already receives (homepage response, TLS handshake, public DNS).
+   The report link carries an unguessable token (`/scans/{id}?t=…`) and is emailed to them.
+   Rate limits: 10 per IP, 10 per email, and 5 per target host per day (so it can't be used to recon one site).
+2. **Teaser report**: score, every issue by severity, one full fix free, the rest blurred. Redaction happens on the server.
+3. **Deep scan + stress test** (probing checks + 50-user load test) needs a **one-click owner approval**:
+   - **Email approval (recommended):** a link sent to `admin@`, `administrator@`, `webmaster@`, `hostmaster@` or `postmaster@` at the
+     registrable domain (the CA/Browser Forum "constructed email" method). If the account email is already one of
+     those, the domain is verified automatically on sign-in. There is no setup step.
+   - **Fallback:** DNS TXT `_njmtech-verify.<host>` or the file `/.well-known/njmtech-security-verify.txt`.
+   - Verification lasts 30 days.
+4. **Pay to unlock** (Yoco, default R499 via `REPORT_PRICE_CENTS`): every finding with evidence and fixes, plus PDF export.
+5. **Pay for fixes**: the customer requests a quote, you set a fixed price in `/admin`, and they get an email and a pay button.
+   Payments are confirmed server-side; the browser redirect is never trusted.
+
+Each check is tagged `public` or `deep` in `lib/scanner/check-keys.ts`:
 
 | Check | Looks for |
 |---|---|
 | `tls` | no HTTPS, missing http→https redirect, expired/expiring/untrusted cert, TLS 1.0/1.1 |
 | `headers` | HSTS, CSP, clickjacking, nosniff, Referrer-Policy, Permissions-Policy |
 | `cookies` | missing Secure / HttpOnly / SameSite |
-| `exposed-files` | `.env`, `.git`, SQL/zip backups, phpinfo, server-status, directory listing (content-signature matched, so no soft-404 false positives) |
-| `cms` | WordPress user enumeration, XML-RPC, generator version, jQuery < 3.5 |
-| `cors` | reflected origin + credentials, wildcard |
+| `exposed-files` *(deep)* | `.env`, `.git`, SQL/zip backups, phpinfo, server-status, directory listing (content-signature matched, so no soft-404 false positives) |
+| `cms` | generator version, jQuery < 3.5 (from the homepage only) |
+| `wordpress` *(deep)* | WordPress user enumeration, XML-RPC |
+| `cors` *(deep)* | reflected origin + credentials, wildcard |
 | `email-dns` | SPF / DMARC missing or `p=none` (invoice-fraud spoofing) |
 | `mixed-content` | `http://` resources on HTTPS pages |
 | `info-leak` | versioned `Server`, `X-Powered-By` |
-| load test (opt-in) | ramps to ≤50 users, ≤30 s, ≤3000 requests, auto-aborts at >20% errors, 1 per site per day |
+| load test *(deep, opt-in)* | ramps to ≤50 users, ≤30 s, ≤3000 requests, auto-aborts at >20% errors, 1 per site per day |
 
 The free finding is the **most severe DIY-friendly** one (e.g. a missing redirect or header). Critical issues stay as the paid work. To change finding text, edit `lib/findings/catalog.ts`. To add a check, add a file in `lib/scanner/checks/`, register it in `lib/scanner/index.ts`, and add its key to `lib/scanner/check-keys.ts`.
 
 ## Safety / abuse controls
-- Owner verification before every scan; terms checkbox; account + IP logged per scan
+- Probing/load only after owner approval; the public scan is passive; terms checkbox; account + IP logged per scan
 - SSRF guard: targets resolving to private/loopback/metadata IPs are refused (`lib/scanner/net.ts`)
 - Rate limits: 5 scans/user/day, 10/IP/day, one running scan per site, 1 load test/site/day; 5 magic links/email/hour
 - Load-test caps are clamped in code and can't be raised by callers; the load test step never auto-retries
@@ -63,15 +73,20 @@ To E2E-test the Worker build locally against the localhost test site, run `wrang
 
 ## Deploying
 Secrets live in Infisical (`env-vault` project, `/njmtech-security` folder) and are pushed to the Worker with `wrangler secret put`:
-`SESSION_SECRET`, `RESEND_API_KEY`, `YOCO_SECRET_KEY`, `YOCO_WEBHOOK_SECRET`. Plain vars (`APP_URL`, `EMAIL_FROM`,
-`ADMIN_EMAILS`, `REPORT_PRICE_CENTS`) are in `wrangler.jsonc`.
+`SESSION_SECRET`, `RESEND_API_KEY`, `YOCO_SECRET_KEY`, `YOCO_WEBHOOK_SECRET`, and `ADMIN_EMAILS` (a secret so it stays out of
+this public repo). Plain vars (`APP_URL`, `EMAIL_FROM`, `REPORT_PRICE_CENTS`) are in `wrangler.jsonc`.
 ```bash
 wrangler d1 create njmtech-security          # put the id in wrangler.jsonc
 pnpm db:migrate:remote
 pnpm deploy                                  # builds + deploys to security.njmtech.co.za
 ```
 Yoco webhook: register `https://security.njmtech.co.za/api/webhooks/yoco` (`POST https://payments.yoco.com/api/webhooks`)
-and store the returned `whsec_…` as `YOCO_WEBHOOK_SECRET`.
+and store the returned `whsec_…` as `YOCO_WEBHOOK_SECRET`. **Only do this on NJM Tech's own Yoco account.** The current
+test key is shared with the wealth-board client sites, and Yoco sends every event to every webhook on an account. Until
+then, payments are confirmed when the customer returns: `/payments/return` reads the checkout status from Yoco's API.
+
+Email: Resend domain `send.njmtech.co.za` (eu-west-1, verified; DNS records in Cloudflare are tagged "Resend"). The Worker's
+`RESEND_API_KEY` is send-only and restricted to that domain.
 
 ## Not in v1
 Scheduled re-scans · server-side PDF generation (it currently uses the browser's print-to-PDF) · refunds UI.

@@ -4,9 +4,9 @@ import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getUser, normalizeEmail, requireAdmin, requireUser, sendMagicLink } from "@/lib/auth";
+import { requireAdmin, requireUser, sendMagicLink } from "@/lib/auth";
 import { getDb, t } from "@/lib/db";
-import { addDomain, InputError, normalizeOrigin, verifyDomain } from "@/lib/domains";
+import { addDomain, InputError, sendDomainVerificationEmail, verifyDomain } from "@/lib/domains";
 import { sendEmail } from "@/lib/email";
 import { env, formatZar } from "@/lib/env";
 import type { LeadStatus } from "@/lib/db/schema";
@@ -14,23 +14,6 @@ import type { LeadStatus } from "@/lib/db/schema";
 export type FormState = { error?: string; ok?: boolean } | undefined;
 
 const emailSchema = z.string().trim().email("Enter a valid email address.");
-
-/** Landing page: email + website → magic link that lands on the verification page. */
-export async function startScanAction(_: FormState, fd: FormData): Promise<FormState> {
-  const email = emailSchema.safeParse(fd.get("email"));
-  if (!email.success) return { error: email.error.issues[0].message };
-  const site = String(fd.get("site") ?? "");
-  try {
-    normalizeOrigin(site);
-  } catch (e) {
-    return { error: e instanceof InputError ? e.message : "Invalid website." };
-  }
-  const next = `/domains/add?site=${encodeURIComponent(site)}`;
-  const current = await getUser();
-  if (current && current.email === normalizeEmail(email.data)) redirect(next);
-  if (!(await sendMagicLink(email.data, next))) return { error: "Too many sign-in emails. Try again in an hour." };
-  redirect(`/login/sent?email=${encodeURIComponent(email.data)}`);
-}
 
 export async function loginAction(_: FormState, fd: FormData): Promise<FormState> {
   const email = emailSchema.safeParse(fd.get("email"));
@@ -129,4 +112,27 @@ export async function updateLeadStatusAction(fd: FormData) {
   if (!LEAD_STATUSES.includes(status)) return;
   await db.update(t.leads).set({ status }).where(eq(t.leads.id, String(fd.get("leadId"))));
   revalidatePath("/admin");
+}
+
+export async function sendVerificationEmailAction(_: FormState, fd: FormData): Promise<FormState & { sentTo?: string }> {
+  const user = await requireUser();
+  try {
+    const sentTo = await sendDomainVerificationEmail(String(fd.get("domainId")), user.id, String(fd.get("email") ?? ""));
+    return { ok: true, sentTo };
+  } catch (e) {
+    return { error: e instanceof InputError ? e.message : "Could not send the verification email." };
+  }
+}
+
+/** From a public scan link: email the scan owner a magic link that lands back on the report. */
+export async function scanSignInAction(_: FormState, fd: FormData): Promise<FormState> {
+  const db = await getDb();
+  const scanId = String(fd.get("scanId"));
+  const token = String(fd.get("t") ?? "");
+  const scan = await db.query.scans.findFirst({ where: eq(t.scans.id, scanId) });
+  if (!scan?.accessToken || scan.accessToken !== token) return { error: "This link is no longer valid." };
+  const owner = await db.query.users.findFirst({ where: eq(t.users.id, scan.userId) });
+  if (!owner) return { error: "Account not found." };
+  if (!(await sendMagicLink(owner.email, `/scans/${scan.id}?t=${token}`))) return { error: "Too many sign-in emails. Try again in an hour." };
+  return { ok: true };
 }

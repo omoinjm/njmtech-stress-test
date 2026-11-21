@@ -1,5 +1,5 @@
 import { catalogEntry } from "../findings/catalog";
-import { cmsCheck } from "./checks/cms-fingerprint";
+import { cmsCheck, wordpressCheck } from "./checks/cms-fingerprint";
 import { cookiesCheck } from "./checks/cookies";
 import { corsCheck } from "./checks/cors";
 import { emailDnsCheck } from "./checks/email-dns";
@@ -17,15 +17,16 @@ export const CHECKS: Check[] = [
   tlsCheck,
   headersCheck,
   cookiesCheck,
-  exposedFilesCheck,
   cmsCheck,
-  corsCheck,
   emailDnsCheck,
   mixedContentCheck,
   infoLeakCheck,
+  exposedFilesCheck,
+  wordpressCheck,
+  corsCheck,
 ];
 
-export { CHECK_KEYS } from "./check-keys";
+export { CHECK_KEYS, checkKeysFor } from "./check-keys";
 if (CHECKS.map((c) => c.key).join() !== CHECK_KEYS.join()) {
   throw new Error("CHECK_KEYS (check-keys.ts) is out of sync with the CHECKS registry");
 }
@@ -45,6 +46,8 @@ export async function runCheck(
 
 /** Attach catalog text, dedupe by key (merging evidence), sort most severe first. */
 export function toFindings(raw: RawFinding[]): Finding[] {
+  // HTTPS exists but is broken: "certificate not trusted" is the accurate finding, not "no HTTPS".
+  if (raw.some((r) => r.key === "tls.cert-invalid")) raw = raw.filter((r) => r.key !== "tls.no-https");
   const byKey = new Map<string, Finding>();
   for (const r of raw) {
     const existing = byKey.get(r.key);

@@ -44,6 +44,31 @@ export async function ctExpiry(host: string): Promise<Date | null> {
   }
 }
 
+/**
+ * Inspect the certificate. Node: lenient handshake so we can see *why* a cert is bad.
+ * Cloudflare Workers: `rejectUnauthorized: false` is not implemented and the runtime always
+ * validates, so fall back to a strict handshake (success ⇒ trusted chain + hostname).
+ */
+async function inspect(host: string, port: number): Promise<CertInfo> {
+  try {
+    return await connect(host, port);
+  } catch (e) {
+    if (!/not implemented/i.test((e as Error).message)) throw e;
+    const strict = await new Promise<CertInfo>((resolve, reject) => {
+      const socket = tls.connect({ host, port, servername: host, timeout: 8000 }, () => {
+        socket.end();
+        resolve({ validTo: null, authorized: true, protocol: null });
+      });
+      socket.on("error", reject);
+      socket.on("timeout", () => {
+        socket.destroy();
+        reject(new Error("TLS timeout"));
+      });
+    });
+    return strict;
+  }
+}
+
 async function supportsLegacy(host: string, port: number): Promise<string | null> {
   for (const v of ["TLSv1", "TLSv1.1"] as const) {
     try {
@@ -83,7 +108,7 @@ export const tlsCheck: Check = {
 
     const port = Number(url.port || 443);
     try {
-      const info = await connect(hostname, port);
+      const info = await inspect(hostname, port);
       const validTo = info.validTo ?? (await ctExpiry(hostname));
       const days = validTo ? Math.floor((validTo.getTime() - Date.now()) / 86_400_000) : null;
       const src = info.validTo ? "" : " (per Certificate Transparency logs)";
@@ -96,7 +121,13 @@ export const tlsCheck: Check = {
         out.push({ key: "tls.cert-invalid", evidence: `Certificate not trusted: ${info.authError ?? "unknown reason"}` });
       }
     } catch (e) {
-      out.push({ key: "tls.cert-invalid", evidence: `TLS handshake failed: ${(e as Error).message}` });
+      const msg = (e as Error).message;
+      // The homepage was already fetched over HTTPS on this host, and fetch() validates the certificate.
+      // A failing raw handshake then says more about the runtime than about the site: don't report it.
+      const fetchedOverHttps = new URL(home.url).protocol === "https:" && new URL(home.url).hostname === hostname;
+      if (!fetchedOverHttps) {
+        out.push({ key: "tls.cert-invalid", evidence: `TLS handshake failed: ${msg}` });
+      }
     }
 
     const legacy = await supportsLegacy(hostname, port);
