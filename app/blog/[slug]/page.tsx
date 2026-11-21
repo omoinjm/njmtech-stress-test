@@ -7,6 +7,7 @@ import { RichText } from "@/components/portable-text";
 import { getUser } from "@/lib/auth";
 import { getPost, readingMinutes, SITE_URL } from "@/lib/blog";
 import { tableOfContents } from "@/lib/blog/pt-utils";
+import { urlForImage } from "@/lib/sanity/image";
 
 type Props = PageProps<"/blog/[slug]">;
 
@@ -22,13 +23,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const p = await load(slug);
   if (!p) return { title: "Not found" };
   const url = `${SITE_URL}/blog/${p.slug}`;
+  const image = shareImage(p);
   return {
     title: `${p.seoTitle || p.title} | NJM Tech Security`,
     description: p.description,
     alternates: { canonical: url },
     robots: p.isDraft ? { index: false, follow: false } : undefined,
-    openGraph: { type: "article", url, title: p.title, description: p.description, publishedTime: p.publishedAt, modifiedTime: p.updatedAt ?? p.publishedAt },
+    openGraph: {
+      type: "article",
+      siteName: "NJM Tech Security", // page-level openGraph replaces the layout's, so repeat it
+      locale: "en_ZA",
+      url,
+      title: p.title,
+      description: p.description,
+      publishedTime: p.publishedAt,
+      modifiedTime: p.updatedAt ?? p.publishedAt,
+      ...(image ? { images: [image] } : {}),
+    },
+    twitter: { card: "summary_large_image", title: p.title, description: p.description, ...(image ? { images: [image.url] } : {}) },
   };
+}
+
+/** 1200×630 share image from the post's main image (falls back to the site default card). */
+function shareImage(p: { mainImage?: { alt?: string; asset?: { _ref: string } } | null; title: string }) {
+  if (!p.mainImage?.asset) return null;
+  return { url: urlForImage(p.mainImage).width(1200).height(630).fit("crop").auto("format").url(), width: 1200, height: 630, alt: p.mainImage.alt ?? p.title };
 }
 
 const fmt = (d: string) => new Date(d).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
@@ -40,6 +59,7 @@ export default async function BlogPostPage({ params }: Props) {
   const toc = tableOfContents(p.body);
   const url = `${SITE_URL}/blog/${p.slug}`;
   const authorId = `${SITE_URL}/#author-${p.author?.slug ?? "team"}`;
+  const image = shareImage(p);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -55,6 +75,7 @@ export default async function BlogPostPage({ params }: Props) {
         author: { "@id": authorId },
         publisher: { "@id": `${SITE_URL}/#org` },
         keywords: (p.tags ?? []).join(", "),
+        ...(image ? { image: { "@type": "ImageObject", url: image.url, width: 1200, height: 630 } } : {}),
         inLanguage: "en-ZA",
       },
       {

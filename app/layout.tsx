@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://security.njmtech.co.za"),
   title: "NJM Tech Security: Website Security & Stress Check",
   description: "Find security holes and performance problems on your website, online store or web app before attackers do.",
+  // Default share card: app/opengraph-image.png (pages with their own image override it).
+  openGraph: { siteName: "NJM Tech Security", locale: "en_ZA", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 async function NavUser() {
@@ -61,7 +64,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
         {validClarityId(clarityId) && <Clarity projectId={clarityId} />}
         <footer className="no-print border-t border-black/10 py-6 text-center text-xs text-slate-500 dark:border-white/10">
-          Only owner-verified websites are scanned. Checks are non-destructive. <Link href="/terms" className="underline">Terms</Link>
+          <nav className="mb-2 flex justify-center gap-4 text-sm">
+            <Link href="/blog" className="hover:underline">Blog</Link>
+            <Link href="/about" className="hover:underline">About</Link>
+            <Link href="/contact" className="hover:underline">Contact</Link>
+            <Link href="/terms" className="hover:underline">Terms</Link>
+          </nav>
+          Deep scans run only with the site owner&apos;s approval. Checks are non-destructive.
         </footer>
       </body>
     </html>

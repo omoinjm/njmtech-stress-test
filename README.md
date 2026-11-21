@@ -59,6 +59,8 @@ Blog posts, authors, categories and the terms page live in Sanity: project `w1uo
 - **Site:** `/blog`, `/blog/[slug]`, `/blog/rss.xml`, `sitemap.xml` and `/terms` read published content through Sanity's CDN. Admins see draft previews (with a banner and `noindex`) through `SANITY_API_READ_TOKEN`.
 - **Fix guides:** a post's "Fixes scanner findings" field links matching report findings to it ("How to fix this, step by step →"). If Sanity is unreachable, the links are hidden; reports never break.
 - **Tokens** (Infisical `env-vault:/njmtech-security`): `SANITY_API_READ_TOKEN` (also a Worker secret) and `SANITY_API_WRITE_TOKEN` (scripts only, e.g. `pnpm sanity:seed`).
+- **Share images:** a post's main image is its Open Graph/Twitter card; other pages use `app/opengraph-image.png`.
+- **IndexNow:** after publishing or updating posts, run `pnpm indexnow` to notify Bing and other IndexNow engines of the sitemap URLs (key file `public/15d9bf3194cafc2c9689ac596a3bb988.txt`).
 - Scans, findings, payments and leads stay in D1. That's transactional data, not content.
 
 ## Local development
