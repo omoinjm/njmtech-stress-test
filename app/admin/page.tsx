@@ -44,7 +44,7 @@ async function Inner() {
   const revenue = payments.filter((x) => x.p.status === "paid" && x.p.mode !== "test").reduce((sum, x) => sum + x.p.amountCents, 0);
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6" data-clarity-mask="True">
       <Card>
         <h2 className="mb-3 font-semibold">Payments <span className="text-sm font-normal text-slate-500">· live revenue {formatZar(revenue)}</span></h2>
         <div className="overflow-x-auto">

@@ -24,7 +24,7 @@ async function Inner({ params }: { params: PageProps<"/admin/scans/[id]">["param
   const lt = scan.loadTest;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-5" data-clarity-mask="True">
       <Card className="flex flex-col items-center gap-6 sm:flex-row">
         <ScoreRing score={securityScore(findings)} />
         <div className="flex-1">

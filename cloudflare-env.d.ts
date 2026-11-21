@@ -18,4 +18,5 @@ interface CloudflareEnv {
   SANITY_PROJECT_ID: string;
   SANITY_DATASET: string;
   SANITY_API_READ_TOKEN: string;
+  CLARITY_PROJECT_ID: string;
 }

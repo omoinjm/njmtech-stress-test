@@ -61,7 +61,8 @@ export function ScanReport({ initial, paymentNotice }: { initial: ScanView; paym
   const total = view.full ? view.full.findings.length : view.report!.locked.length + (view.report!.unlocked ? 1 : 0);
 
   return (
-    <div className="grid gap-6">
+    // Never let session-recording tools capture a customer's vulnerability details.
+    <div className="grid gap-6" data-clarity-mask="True">
       {paymentNotice && <PaymentNotice status={paymentNotice} />}
       <Card className="flex flex-col items-center gap-6 sm:flex-row">
         <ScoreRing score={summary.score} />

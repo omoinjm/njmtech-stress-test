@@ -10,6 +10,7 @@ import {
   verifyDomainAction,
   type FormState,
 } from "@/app/actions";
+import { clarityEvent } from "./clarity";
 import { btnCls, inputCls } from "./ui";
 
 function ErrorText({ state }: { state: FormState }) {
@@ -37,7 +38,10 @@ export function StartScanForm({ source, compact }: { source?: string; compact?: 
       }),
     });
     const data = (await res.json()) as { url?: string; error?: string };
-    if (res.ok && data.url) return router.push(data.url);
+    if (res.ok && data.url) {
+      clarityEvent("scan_started"); // funnel analytics: which pages/posts lead to scans
+      return router.push(data.url);
+    }
     setError(data.error ?? "Could not start the scan.");
     setPending(false);
   }
