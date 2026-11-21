@@ -10,7 +10,8 @@
     // Defense in depth vs SSRF: fetch() can never reach private/internal addresses.
     "global_fetch_strictly_public"
   ],
-  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // html_handling none: serve .html assets as-is (no redirect), e.g. the Search Console verification file.
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS", "html_handling": "none" },
   "routes": [{ "pattern": "security.njmtech.co.za", "custom_domain": true }],
   "workers_dev": false,
   "observability": { "enabled": true },
