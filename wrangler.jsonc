@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "njmtech-security",
+  // Custom entry: re-exports the OpenNext fetch handler + our Workflow classes.
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat",
+    // Defense in depth vs SSRF: fetch() can never reach private/internal addresses.
+    "global_fetch_strictly_public"
+  ],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "routes": [{ "pattern": "security.njmtech.co.za", "custom_domain": true }],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "limits": { "cpu_ms": 120000 },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "njmtech-security",
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "workflows": [
+    { "name": "njmtech-security-scan", "binding": "SCAN_WORKFLOW", "class_name": "ScanWorkflow" },
+    { "name": "njmtech-security-load-shard", "binding": "LOAD_SHARD_WORKFLOW", "class_name": "LoadShardWorkflow" }
+  ],
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "njmtech-security" }],
+  "vars": {
+    "APP_URL": "https://security.njmtech.co.za",
+    "EMAIL_FROM": "NJM Tech Security <security@send.njmtech.co.za>",
+    "EMAIL_REPLY_TO": "",
+    "ADMIN_EMAILS": "",
+    "REPORT_PRICE_CENTS": "49900"
+  }
+  // Secrets (wrangler secret put / Infisical): SESSION_SECRET, RESEND_API_KEY, YOCO_SECRET_KEY, YOCO_WEBHOOK_SECRET
+}

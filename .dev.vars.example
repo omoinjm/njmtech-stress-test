@@ -1,0 +1,11 @@
+# Local dev (next dev). Production values live in Infisical + wrangler secrets.
+APP_URL=http://localhost:3000
+SESSION_SECRET=
+ADMIN_EMAILS=admin@localhost.test
+EMAIL_FROM="NJM Tech Security <security@send.njmtech.co.za>"
+REPORT_PRICE_CENTS=49900
+ALLOW_PRIVATE_TARGETS=true
+# Filled from Infisical:
+RESEND_API_KEY=
+YOCO_SECRET_KEY=
+YOCO_WEBHOOK_SECRET=

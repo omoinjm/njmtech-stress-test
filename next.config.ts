@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // cacheComponents/partial prefetching are off: on the Workers runtime (workerd) Next warns that
+  // Cache Components can't run reliably with its setTimeout() and dynamic renders hang. Every page
+  // here is per-user/request-time anyway, so nothing is lost.
   turbopack: {
     rules: {
       "*.css": {
@@ -15,3 +16,6 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+// Makes D1 + vars from wrangler.jsonc available to `next dev` via getCloudflareContext().
+initOpenNextCloudflareForDev();
