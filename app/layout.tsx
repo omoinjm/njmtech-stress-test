@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
+import { LogoMark } from "@/components/logo-mark";
 import { getUser } from "@/lib/auth";
 import "./globals.css";
 
@@ -44,7 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <header className="no-print border-b border-black/10 dark:border-white/10">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             <Link href="/" className="flex items-center gap-2 font-semibold">
-              <span className="grid h-7 w-7 place-items-center rounded-md bg-emerald-600 text-white">◆</span>
+              <LogoMark />
               NJM Tech Security
             </Link>
             <Suspense fallback={<span className="h-5 w-24" />}>
