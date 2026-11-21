@@ -241,6 +241,17 @@ function NextStep({ view }: { view: ScanView }) {
       </div>
     );
   }
+  if (view.ownerIsAdmin) {
+    return (
+      <div className="no-print grid gap-4">
+        {view.kind === "public" && <DeepScanCta view={view} />}
+        <Card className="border-emerald-600/40 text-sm text-slate-600 dark:text-slate-300">
+          👑 <strong>Owner account:</strong> full reports, deep scans and unlimited scanning are free for you. Customers see
+          the teaser and payment options instead.
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="no-print grid gap-4">
       {view.kind === "public" && <DeepScanCta view={view} />}

@@ -18,7 +18,9 @@ const sql = (strings, ...vals) => {
   return JSON.parse(out)[0].results;
 };
 sql.end = async () => {};
-const email = (process.env.ADMIN_EMAILS ?? "admin@localhost.test").split(",")[0].trim();
+// A regular customer drives the paid flows; the owner/admin account gets everything free.
+const email = "customer@e2e.test";
+const adminEmail = (process.env.ADMIN_EMAILS ?? "admin@localhost.test").split(",")[0].trim();
 let cookie = "";
 let failures = 0;
 
@@ -32,11 +34,20 @@ const json = (path, body) =>
   req(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 // 1. Login via a magic-link token inserted directly (simulates clicking the email link).
-const token = randomBytes(24).toString("base64url");
-void sql`insert into login_tokens (token_hash, email, redirect_to, expires_at, created_at)
-          values (${createHash("sha256").update(token).digest("hex")}, ${email}, '/dashboard', ${Date.now() + 600_000}, ${Date.now()})`;
+const issueToken = (addr) => {
+  const tok = randomBytes(24).toString("base64url");
+  void sql`insert into login_tokens (token_hash, email, redirect_to, expires_at, created_at)
+            values (${createHash("sha256").update(tok).digest("hex")}, ${addr}, '/dashboard', ${Date.now() + 600_000}, ${Date.now()})`;
+  return tok;
+};
+const signIn = async (addr) => {
+  const res = await fetch(`${BASE}/auth/callback?token=${issueToken(addr)}`, { redirect: "manual" });
+  return (res.headers.get("set-cookie") ?? "").split(";")[0];
+};
+const token = issueToken(email);
 let r = await req(`/auth/callback?token=${token}`);
 cookie = (r.headers.get("set-cookie") ?? "").split(";")[0];
+const adminCookie = await signIn(adminEmail);
 check("magic link signs in", r.status === 307 && cookie.startsWith("st_session="), `${r.status}`);
 r = await fetch(`${BASE}/auth/callback?token=${token}`, { redirect: "manual" });
 check("magic link is single-use", (r.headers.get("location") ?? "").includes("error=expired"));
@@ -160,12 +171,29 @@ try {
   const html = await r.text();
   check("teaser page renders", r.status === 200);
   check("unlocked HTML shows full fixes", html.includes("Assume every secret in it is compromised"));
-  r = await req(`/admin/scans/${scanId}`);
+  r = await req(`/admin`);
+  check("customer cannot open /admin", r.status === 307 || !(await r.text()).includes("Fix requests"));
+  const adminReq = (path) => fetch(BASE + path, { redirect: "manual", headers: { cookie: adminCookie } });
+  r = await adminReq(`/admin/scans/${scanId}`);
   const adminHtml = await r.text();
   check("admin full report renders all fixes", r.status === 200 && adminHtml.includes("Assume every secret in it is compromised"));
   await sql`insert into leads (id, scan_id, user_id, name, status, created_at) select ${crypto.randomUUID()}, ${scanId}, user_id, 'E2E Tester', 'new', ${Date.now()} from scans where id = ${scanId}`;
-  r = await req("/admin");
+  r = await adminReq("/admin");
   check("lead visible in admin", (await r.text()).includes("E2E Tester"));
+
+  // 9. Owner/admin: the tool is free (no paywall, no payment).
+  void sql`delete from domains where origin = ${TARGET} and user_id = (select id from users where email = ${adminEmail})`;
+  r = await fetch(`${BASE}/api/scans/public`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ site: TARGET, email: adminEmail }) });
+  const own = await r.json();
+  let ov;
+  for (let i = 0; i < 120; i++) {
+    ov = await (await fetch(`${BASE}/api/scans/${own.id}?${own.url.split("?")[1]}`)).json();
+    if (ov.status === "done" || ov.status === "failed") break;
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  check("owner's scan: full report free, no paywall", ov.ownerIsAdmin && ov.unlocked && ov.full?.findings?.every((f) => f.fix) && !ov.report, `${ov.full?.findings?.length} findings`);
+  r = await fetch(`${BASE}/api/payments/checkout`, { method: "POST", headers: { "content-type": "application/json", cookie: adminCookie }, body: JSON.stringify({ scanId: own.id, kind: "report_unlock" }) });
+  check("owner is never charged", r.status === 409, (await r.json()).error);
   console.log(`\nTeaser: ${BASE}/scans/${scanId}\nAdmin:  ${BASE}/admin/scans/${scanId}`);
 } finally {
   weak.kill();

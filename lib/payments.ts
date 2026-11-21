@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, t, type DB } from "./db";
 import type { PaymentKind } from "./db/schema";
 import { sendEmail } from "./email";
-import { env, formatZar } from "./env";
+import { env, formatZar, isAdminEmail } from "./env";
 import { createCheckout, getCheckout, type YocoCheckout } from "./yoco";
 
 export class PaymentError extends Error {
@@ -16,6 +16,8 @@ export async function startPayment(userId: string, scanId: string, kind: Payment
   const db = await getDb();
   const scan = await db.query.scans.findFirst({ where: and(eq(t.scans.id, scanId), eq(t.scans.userId, userId)) });
   if (!scan || scan.status !== "done") throw new PaymentError(404, "Report not found.");
+  const payer = await db.query.users.findFirst({ where: eq(t.users.id, userId) });
+  if (isAdminEmail(payer?.email)) throw new PaymentError(409, "Owner accounts use the tool for free, so no payment is needed.");
 
   let amountCents: number;
   let leadId: string | null = null;

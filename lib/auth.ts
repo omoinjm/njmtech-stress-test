@@ -5,7 +5,7 @@ import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { getDb, t } from "./db";
 import { sendEmail } from "./email";
-import { env } from "./env";
+import { env, isAdminEmail } from "./env";
 
 const COOKIE = "st_session";
 const SESSION_DAYS = 14;
@@ -96,7 +96,7 @@ export async function getUser(): Promise<SessionUser | null> {
   const db = await getDb();
   const user = await db.query.users.findFirst({ where: eq(t.users.id, id) });
   if (!user) return null;
-  return { id: user.id, email: user.email, isAdmin: env.adminEmails().includes(user.email) };
+  return { id: user.id, email: user.email, isAdmin: isAdminEmail(user.email) };
 }
 
 export async function requireUser(next = "/dashboard"): Promise<SessionUser> {
