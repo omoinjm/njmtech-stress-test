@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
+import { Clarity } from "@/components/clarity";
 import { LogoMark } from "@/components/logo-mark";
+import { validClarityId } from "@/lib/analytics";
 import { getUser } from "@/lib/auth";
 import "./globals.css";
 
@@ -39,6 +41,7 @@ async function NavUser() {
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  const clarityId = process.env.CLARITY_PROJECT_ID;
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
@@ -54,6 +57,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+        {validClarityId(clarityId) && <Clarity projectId={clarityId} />}
         <footer className="no-print border-t border-black/10 py-6 text-center text-xs text-slate-500 dark:border-white/10">
           Only owner-verified websites are scanned. Checks are non-destructive. <Link href="/terms" className="underline">Terms</Link>
         </footer>
