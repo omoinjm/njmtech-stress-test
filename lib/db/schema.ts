@@ -84,6 +84,8 @@ export const scans = sqliteTable(
     accessToken: text("access_token"),
     includeLoadTest: integer("include_load_test", { mode: "boolean" }).notNull().default(false),
     requesterIp: text("requester_ip"),
+    /** Where the scan came from, e.g. "blog-will-your-online-store-survive-black-friday" (from ?src=). */
+    source: text("source"),
     runId: text("run_id"),
     progress: integer("progress").notNull().default(0),
     loadTest: text("load_test", { mode: "json" }).$type<LoadTestSummary | null>(),

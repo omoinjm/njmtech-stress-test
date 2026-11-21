@@ -105,7 +105,7 @@ export function ScanReport({ initial, paymentNotice }: { initial: ScanView; paym
       {view.loadTest && <LoadCard lt={view.loadTest} />}
 
       {view.full ? (
-        view.full.findings.map((f, i) => <FindingCard key={f.id} f={f} index={i + 1} />)
+        view.full.findings.map((f, i) => <FindingCard key={f.id} f={f} index={i + 1} guide={view.fixGuides[f.id]} />)
       ) : (
         <TeaserBody view={view} />
       )}
@@ -148,7 +148,17 @@ function LoadCard({ lt }: { lt: NonNullable<ScanView["loadTest"]> }) {
   );
 }
 
-function FindingCard({ f, index, free }: { f: Omit<FullFinding, "key"> & { key?: string }; index?: number; free?: boolean }) {
+function FindingCard({
+  f,
+  index,
+  free,
+  guide,
+}: {
+  f: Omit<FullFinding, "key"> & { key?: string };
+  index?: number;
+  free?: boolean;
+  guide?: { slug: string; title: string };
+}) {
   return (
     <Card className={`break-inside-avoid ${free ? "border-emerald-600/40" : ""}`}>
       <div className="mb-2 flex items-center gap-2">
@@ -163,6 +173,11 @@ function FindingCard({ f, index, free }: { f: Omit<FullFinding, "key"> & { key?:
       <pre className="mt-1 whitespace-pre-wrap rounded bg-black/5 p-3 font-mono text-xs dark:bg-white/10">{f.evidence}</pre>
       <h3 className="mt-3 text-sm font-semibold">How to fix it</h3>
       <pre className="mt-1 whitespace-pre-wrap rounded bg-black/5 p-3 font-mono text-xs dark:bg-white/10">{f.fix}</pre>
+      {guide && (
+        <Link href={`/blog/${guide.slug}`} className="no-print mt-3 inline-block text-sm font-semibold text-emerald-600 hover:underline">
+          How to fix this, step by step →
+        </Link>
+      )}
     </Card>
   );
 }
@@ -171,7 +186,7 @@ function TeaserBody({ view }: { view: ScanView }) {
   const r = view.report!;
   return (
     <>
-      {r.unlocked && <FindingCard f={r.unlocked} free />}
+      {r.unlocked && <FindingCard f={r.unlocked} free guide={view.fixGuides[r.unlocked.id]} />}
       {r.locked.length > 0 && (
         <div className="grid gap-3">
           <h2 className="font-semibold">Other issues ({r.locked.length})</h2>

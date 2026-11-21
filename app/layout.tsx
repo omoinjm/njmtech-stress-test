@@ -17,13 +17,17 @@ async function NavUser() {
   const user = await getUser();
   if (!user) {
     return (
+      <div className="flex items-center gap-3 text-sm">
+      <Link href="/blog" className="font-medium">Blog</Link>
       <Link href="/login" className="rounded-md px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10">
         Sign in
       </Link>
+      </div>
     );
   }
   return (
     <div className="flex items-center gap-3 text-sm">
+      <Link href="/blog" className="font-medium">Blog</Link>
       {user.isAdmin && <Link href="/admin" className="font-medium text-amber-600">Admin</Link>}
       <Link href="/dashboard" className="font-medium">Dashboard</Link>
       <form action="/auth/signout" method="post">

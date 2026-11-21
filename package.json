@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
+    "marked": "15.0.12",
     "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",

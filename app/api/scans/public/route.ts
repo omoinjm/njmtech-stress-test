@@ -3,7 +3,12 @@ import { z } from "zod";
 import { InputError } from "@/lib/domains";
 import { createPublicScan, ScanError } from "@/lib/scans";
 
-const body = z.object({ site: z.string().min(3).max(300), email: z.string().trim().email("Enter a valid email address.") });
+const body = z.object({
+  site: z.string().min(3).max(300),
+  email: z.string().trim().email("Enter a valid email address."),
+  /** Attribution, e.g. "blog-<slug>". Anything malformed is dropped rather than rejected. */
+  source: z.string().optional(),
+});
 
 /** Landing page: instant passive scan, no sign-in or verification needed. */
 export async function POST(req: NextRequest) {
@@ -11,7 +16,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
   const ip = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? null;
   try {
-    const scan = await createPublicScan({ ...parsed.data, ip });
+    const source = parsed.data.source && /^[a-z0-9][a-z0-9-]{0,79}$/.test(parsed.data.source) ? parsed.data.source : null;
+    const scan = await createPublicScan({ site: parsed.data.site, email: parsed.data.email, ip, source });
     return NextResponse.json({ id: scan.id, url: `/scans/${scan.id}?t=${scan.accessToken}` }, { status: 201 });
   } catch (e) {
     if (e instanceof InputError) return NextResponse.json({ error: e.message }, { status: 400 });
