@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { RichText } from "@/components/portable-text";
 import { Card } from "@/components/ui";
 import type { PortableTextBlock } from "@portabletext/react";
@@ -5,6 +6,12 @@ import { LEGAL_PAGE_QUERY } from "@/lib/blog/queries";
 import { sanityFetch } from "@/lib/sanity/client";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Scanning Terms | NJM Tech Security",
+  description: "What NJM Tech Security's free public scan, deep scan and stress test do, what they never do, and how owner approval works.",
+  alternates: { canonical: "/terms" },
+};
 
 /** Edited in Sanity Studio (legalPage "terms"); the built-in copy is only a fallback if Sanity is unreachable. */
 export default async function Terms() {

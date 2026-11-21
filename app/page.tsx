@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import { StartScanForm } from "@/components/forms";
 import { Card } from "@/components/ui";
+
+export const metadata: Metadata = {
+  title: "Free Website Security Check for South African Businesses | NJM Tech Security",
+  description:
+    "Scan your website free in under a minute: HTTPS, security headers, exposed files, email spoofing and more. Get one fix free and let our team fix the rest.",
+  alternates: { canonical: "/" },
+};
 
 const CHECKS = [
   ["🔒", "HTTPS & certificates", "Expired or weak certificates, missing redirects, outdated TLS."],

@@ -12,6 +12,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  // Resolves relative canonical/OG URLs to the production domain.
+  metadataBase: new URL("https://security.njmtech.co.za"),
   title: "NJM Tech Security: Website Security & Stress Check",
   description: "Find security holes and performance problems on your website, online store or web app before attackers do.",
 };
