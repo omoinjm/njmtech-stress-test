@@ -1,10 +1,7 @@
 import { PortableText, type PortableTextBlock, type PortableTextComponents } from "@portabletext/react";
-import imageUrlBuilder from "@sanity/image-url";
-import { sanityConfig } from "@/lib/sanity/client";
+import { urlForImage } from "@/lib/sanity/image";
 import { blockText, headingId, isExternal } from "@/lib/blog/pt-utils";
 import { BlogCta } from "./blog-cta";
-
-const imageUrl = imageUrlBuilder({ projectId: sanityConfig.projectId, dataset: sanityConfig.dataset });
 
 const CALLOUT: Record<string, string> = {
   info: "border-sky-500 bg-sky-500/5",
@@ -57,7 +54,7 @@ function components(slug?: string): PortableTextComponents {
         value?.asset ? (
           <figure>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl.image(value).width(1200).fit("max").auto("format").url()} alt={value.alt ?? ""} loading="lazy" className="rounded-lg" />
+            <img src={urlForImage(value).width(1200).fit("max").auto("format").url()} alt={value.alt ?? ""} loading="lazy" className="rounded-lg" />
             {value.caption && <figcaption className="mt-1 text-xs text-slate-500">{value.caption}</figcaption>}
           </figure>
         ) : null,

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
 import {
   addDomainAction,
+  contactAction,
   loginAction,
   scanSignInAction,
   sendVerificationEmailAction,
@@ -141,6 +142,37 @@ export function ScanSignIn({ scanId, token, emailHint }: { scanId: string; token
       <input type="hidden" name="t" value={token} />
       <button className={btnCls} disabled={pending}>{pending ? "Sending…" : `Email a sign-in link to ${emailHint}`}</button>
       <ErrorText state={state} />
+    </form>
+  );
+}
+
+/** Contact form. `fax` is a hidden honeypot; `startedAt` lets the server reject instant (bot) submissions. */
+export function ContactForm() {
+  const [state, action, pending] = useActionState(contactAction, undefined);
+  const [startedAt] = useState(() => Date.now());
+  if (state?.ok) {
+    return (
+      <p className="rounded-md bg-emerald-600/10 px-3 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+        ✅ Thanks, your message is on its way. We usually reply within one business day.
+      </p>
+    );
+  }
+  return (
+    <form action={action} className="grid gap-3">
+      <input type="hidden" name="startedAt" value={startedAt} />
+      <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+        <label>Fax <input name="fax" tabIndex={-1} autoComplete="off" /></label>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1 text-sm">Your name<input name="name" required maxLength={120} className={inputCls} /></label>
+        <label className="grid gap-1 text-sm">Email<input name="email" type="email" required maxLength={200} className={inputCls} /></label>
+      </div>
+      <label className="grid gap-1 text-sm">Website (optional)<input name="website" placeholder="yourshop.co.za" maxLength={300} className={inputCls} /></label>
+      <label className="grid gap-1 text-sm">Message<textarea name="message" required minLength={10} maxLength={3000} rows={6} className={inputCls} /></label>
+      <div>
+        <button className={btnCls} disabled={pending}>{pending ? "Sending…" : "Send message"}</button>
+        <ErrorText state={state} />
+      </div>
     </form>
   );
 }

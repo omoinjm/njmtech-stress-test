@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireAdmin, requireUser, sendMagicLink } from "@/lib/auth";
 import { getDb, t } from "@/lib/db";
 import { addDomain, InputError, sendDomainVerificationEmail, verifyDomain } from "@/lib/domains";
+import { screenContact } from "@/lib/contact";
 import { sendEmail } from "@/lib/email";
 import { env, formatZar } from "@/lib/env";
 import type { LeadStatus } from "@/lib/db/schema";
@@ -134,5 +135,24 @@ export async function scanSignInAction(_: FormState, fd: FormData): Promise<Form
   const owner = await db.query.users.findFirst({ where: eq(t.users.id, scan.userId) });
   if (!owner) return { error: "Account not found." };
   if (!(await sendMagicLink(owner.email, `/scans/${scan.id}?t=${token}`))) return { error: "Too many sign-in emails. Try again in an hour." };
+  return { ok: true };
+}
+
+/** Contact form → email to the owner/admins (reply-to = visitor). */
+export async function contactAction(_: FormState, fd: FormData): Promise<FormState> {
+  const screened = screenContact(fd);
+  if (screened.spam) return { ok: true }; // look successful to bots
+  if ("error" in screened) return { error: screened.error };
+  const { name, email, website, message } = screened.data;
+  const admins = env.adminEmails();
+  if (admins.length === 0) return { error: "Messages can't be delivered right now. Please try again later." };
+  for (const to of admins) {
+    await sendEmail({
+      to,
+      replyTo: email,
+      subject: `Contact form: ${name}${website ? ` (${website})` : ""}`,
+      text: `From: ${name} <${email}>\nWebsite: ${website ?? "-"}\n\n${message}\n\n(Reply to this email to answer them directly.)`,
+    });
+  }
   return { ok: true };
 }
