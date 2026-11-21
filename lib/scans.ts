@@ -1,5 +1,6 @@
 import { and, count, eq, gt, inArray } from "drizzle-orm";
 import { getDb, t, type DB } from "./db";
+import { isAdminEmail } from "./env";
 import { normalizeEmail } from "./auth";
 import { addDomain, isVerified, normalizeOrigin } from "./domains";
 
@@ -46,9 +47,13 @@ export async function createScan(opts: {
   if (!domain || domain.userId !== opts.userId) throw new ScanError(404, "Website not found.");
   if (!isVerified(domain)) throw new ScanError(403, "Verify ownership of this website before scanning it.");
 
-  if ((await countScans(db, and(eq(t.scans.userId, opts.userId), gt(t.scans.createdAt, dayAgo())))) >= LIMITS.scansPerUserPerDay)
+  const requester = await db.query.users.findFirst({ where: eq(t.users.id, opts.userId) });
+  // Owner/admin: free and unmetered. Safety limits below (verification, one running scan per
+  // site, one stress test per site per day) still apply because they protect the target site.
+  const admin = isAdminEmail(requester?.email);
+  if (!admin && (await countScans(db, and(eq(t.scans.userId, opts.userId), gt(t.scans.createdAt, dayAgo())))) >= LIMITS.scansPerUserPerDay)
     throw new ScanError(429, `Limit reached: ${LIMITS.scansPerUserPerDay} scans per 24 hours.`);
-  if (opts.ip && (await countScans(db, and(eq(t.scans.requesterIp, opts.ip), gt(t.scans.createdAt, dayAgo())))) >= LIMITS.scansPerIpPerDay)
+  if (!admin && opts.ip && (await countScans(db, and(eq(t.scans.requesterIp, opts.ip), gt(t.scans.createdAt, dayAgo())))) >= LIMITS.scansPerIpPerDay)
     throw new ScanError(429, "Too many scans from your network today.");
   if ((await countScans(db, and(eq(t.scans.domainId, domain.id), inArray(t.scans.status, ["queued", "running"])))) > 0)
     throw new ScanError(409, "A scan of this website is already running.");
@@ -93,16 +98,17 @@ export async function createPublicScan(opts: { site: string; email: string; ip: 
     .returning();
 
   const publicSince = (extra: ReturnType<typeof and>) => and(eq(t.scans.kind, "public"), gt(t.scans.createdAt, dayAgo()), extra);
-  if (opts.ip && (await countScans(db, publicSince(eq(t.scans.requesterIp, opts.ip)))) >= LIMITS.publicScansPerIpPerDay)
+  const admin = isAdminEmail(email);
+  if (!admin && opts.ip && (await countScans(db, publicSince(eq(t.scans.requesterIp, opts.ip)))) >= LIMITS.publicScansPerIpPerDay)
     throw new ScanError(429, "Too many free scans from your network today. Please try again tomorrow.");
-  if ((await countScans(db, publicSince(eq(t.scans.userId, user.id)))) >= LIMITS.publicScansPerEmailPerDay)
+  if (!admin && (await countScans(db, publicSince(eq(t.scans.userId, user.id)))) >= LIMITS.publicScansPerEmailPerDay)
     throw new ScanError(429, "Too many free scans for this email today.");
   const hostScans = await db
     .select({ n: count() })
     .from(t.scans)
     .innerJoin(t.domains, eq(t.scans.domainId, t.domains.id))
     .where(and(eq(t.scans.kind, "public"), gt(t.scans.createdAt, dayAgo()), eq(t.domains.hostname, hostname)));
-  if (hostScans[0].n >= LIMITS.publicScansPerHostPerDay)
+  if (!admin && hostScans[0].n >= LIMITS.publicScansPerHostPerDay)
     throw new ScanError(429, `${hostname} has been scanned several times today. Please try again tomorrow.`);
 
   const domain = await addDomain(user.id, opts.site);

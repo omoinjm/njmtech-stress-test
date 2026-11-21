@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, t } from "./db";
 import type { LeadStatus, LoadTestSummary, ScanKind, ScanStatus } from "./db/schema";
 import { isVerified } from "./domains";
-import { env } from "./env";
+import { env, isAdminEmail } from "./env";
 import { buildTeaser, countBySeverity, securityScore, type TeaserReport } from "./report/teaser";
 import { checkKeysFor } from "./scanner/check-keys";
 import { severityRank, type Finding } from "./scanner/types";
@@ -31,6 +31,8 @@ export type ScanView = {
   /** …then every finding with evidence and fix. Never populated before payment. */
   full: { score: number; counts: TeaserReport["counts"]; findings: FullFinding[] } | null;
   unlocked: boolean;
+  /** Scan belongs to an owner/admin account: everything is free (no paywall, no quote). */
+  ownerIsAdmin: boolean;
   reportPriceCents: number;
   lead: { status: LeadStatus; quoteCents: number | null; quoteNote: string | null } | null;
 };
@@ -61,7 +63,8 @@ export async function getScanView(scanId: string, viewer: { userId?: string | nu
   const done = scan.status === "done";
   const rows = done ? await db.select().from(t.findings).where(eq(t.findings.scanId, scan.id)) : [];
   const lead = await db.query.leads.findFirst({ where: eq(t.leads.scanId, scan.id) });
-  const unlocked = !!scan.unlockedAt;
+  const ownerIsAdmin = isAdminEmail(owner?.email);
+  const unlocked = !!scan.unlockedAt || ownerIsAdmin;
   const sorted = [...rows].sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
   return {
     id: scan.id,
@@ -81,6 +84,7 @@ export async function getScanView(scanId: string, viewer: { userId?: string | nu
     report: done && !unlocked ? buildTeaser(rows) : null,
     full: done && unlocked ? { score: securityScore(rows), counts: countBySeverity(rows), findings: sorted } : null,
     unlocked,
+    ownerIsAdmin,
     reportPriceCents: env.reportPriceCents(),
     lead: lead ? { status: lead.status, quoteCents: lead.quoteCents, quoteNote: lead.quoteNote } : null,
   };

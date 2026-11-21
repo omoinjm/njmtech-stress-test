@@ -15,5 +15,8 @@ export const env = {
   emailReplyTo: () => v("EMAIL_REPLY_TO") || undefined,
 };
 
+/** The owner/admin accounts. They use the tool for free: no paywall, no daily scan quotas. */
+export const isAdminEmail = (email: string | null | undefined) => !!email && env.adminEmails().includes(email.trim().toLowerCase());
+
 export const formatZar = (cents: number) =>
   `R${(cents / 100).toLocaleString("en-ZA", { minimumFractionDigits: cents % 100 ? 2 : 0 })}`;
