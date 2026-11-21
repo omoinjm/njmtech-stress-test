@@ -80,23 +80,43 @@ export function VerifyButton({ domainId }: { domainId: string }) {
   );
 }
 
-/** One-click ownership proof: approval link emailed to an admin mailbox at the domain. */
-export function EmailVerifyForm({ domainId, options }: { domainId: string; options: string[] }) {
+/** One-click ownership proof: approval link emailed to a mailbox at the site's own domain. */
+export function EmailVerifyForm({ domainId, domain, suggestions }: { domainId: string; domain: string; suggestions: string[] }) {
   const [state, action, pending] = useActionState(sendVerificationEmailAction, undefined);
+  const [local, setLocal] = useState(suggestions[0] ?? "info");
   if (state?.ok) {
     return (
       <p className="rounded-md bg-emerald-600/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
-        📬 Approval link sent to <strong>{state.sentTo}</strong>. Click it and this page unlocks the deep scan (refresh after approving).
+        📬 Approval link sent to <strong>{state.sentTo}</strong>. Click it and the deep scan unlocks (refresh this page after
+        approving). Nothing there in a few minutes? Check spam, or try a different mailbox.
       </p>
     );
   }
   return (
-    <form action={action} className="flex flex-col gap-2 sm:flex-row">
+    <form action={action} className="grid gap-2">
       <input type="hidden" name="domainId" value={domainId} />
-      <select name="email" className={inputCls} defaultValue={options[0]}>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <button className={btnCls} disabled={pending}>{pending ? "Sending…" : "Email me the approval link"}</button>
+      <input type="hidden" name="email" value={`${local.trim()}@${domain}`} />
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-1 items-stretch overflow-hidden rounded-md border border-black/15 focus-within:border-emerald-600 dark:border-white/15">
+          <input
+            value={local}
+            onChange={(e) => setLocal(e.target.value.replace(/@.*/, "").replace(/\s/g, ""))}
+            aria-label="Mailbox name"
+            className="min-w-0 flex-1 bg-white px-3 py-2 text-sm outline-none dark:bg-black/30"
+            placeholder="info"
+          />
+          <span className="grid place-items-center bg-black/5 px-3 text-sm text-slate-500 dark:bg-white/10">@{domain}</span>
+        </div>
+        <button className={btnCls} disabled={pending || !local.trim()}>{pending ? "Sending…" : "Email the approval link"}</button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
+        Common:
+        {suggestions.map((sug) => (
+          <button key={sug} type="button" onClick={() => setLocal(sug)} className="rounded border border-black/10 px-1.5 py-0.5 hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10">
+            {sug}@
+          </button>
+        ))}
+      </div>
       <ErrorText state={state} />
     </form>
   );
