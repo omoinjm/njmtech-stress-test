@@ -6,7 +6,14 @@ import { StartScanPanel } from "@/components/start-scan";
 import { Card } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { getDb, t } from "@/lib/db";
-import { isVerified, verificationEmailOptions, VERIFY_FILE_PATH, VERIFY_TXT_PREFIX } from "@/lib/domains";
+import {
+  emailVerificationAllowed,
+  isVerified,
+  registrableDomain,
+  SUGGESTED_LOCAL_PARTS,
+  VERIFY_FILE_PATH,
+  VERIFY_TXT_PREFIX,
+} from "@/lib/domains";
 
 const code = "block overflow-x-auto rounded bg-black/5 px-3 py-2 font-mono text-xs dark:bg-white/10";
 const METHOD: Record<string, string> = { dns: "DNS record", file: "verification file", email: "admin email approval" };
@@ -29,7 +36,8 @@ async function Inner({ params }: { params: PageProps<"/domains/[id]">["params"] 
     );
   }
 
-  const emails = verificationEmailOptions(d.hostname);
+  const emailOk = emailVerificationAllowed(d.hostname);
+  const base = registrableDomain(d.hostname);
   return (
     <Card className="grid gap-6">
       <div>
@@ -39,14 +47,15 @@ async function Inner({ params }: { params: PageProps<"/domains/[id]">["params"] 
         </p>
       </div>
 
-      {emails.length > 0 && (
+      {emailOk && (
         <div className="grid gap-2 rounded-lg border border-emerald-600/40 p-4">
           <h3 className="text-sm font-semibold">One click: approve by email (recommended)</h3>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            We&apos;ll send an approval link to one of your domain&apos;s standard admin mailboxes. Whoever receives it just
-            clicks the link. Nothing to configure.
+            We&apos;ll email an approval link to any mailbox at <strong>{base}</strong> that you or a colleague can read.
+            Whoever receives it clicks once. Nothing to configure. (It has to be an address at your own domain, so nobody can
+            approve a scan of someone else&apos;s site.)
           </p>
-          <EmailVerifyForm domainId={d.id} options={emails} />
+          <EmailVerifyForm domainId={d.id} domain={base} suggestions={[...SUGGESTED_LOCAL_PARTS]} />
         </div>
       )}
 

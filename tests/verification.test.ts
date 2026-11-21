@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorizationDomains, emailQualifiesFor, registrableDomain, verificationEmailOptions } from "@/lib/domains";
+import { authorizationDomains, emailQualifiesFor, emailVerificationAllowed, registrableDomain } from "@/lib/domains";
 import { CHECK_MODES, checkKeysFor } from "@/lib/scanner/check-keys";
 
 describe("authorization domains", () => {
@@ -19,21 +19,25 @@ describe("authorization domains", () => {
   });
 });
 
-describe("email verification eligibility (CA/B Forum constructed addresses only)", () => {
-  it("offers the five admin mailboxes at the registrable domain", () => {
-    expect(verificationEmailOptions("shop.example.co.za")).toEqual([
-      "admin@example.co.za", "administrator@example.co.za", "webmaster@example.co.za", "hostmaster@example.co.za", "postmaster@example.co.za",
-    ]);
-    expect(verificationEmailOptions("localhost")).toEqual([]);
+describe("email verification eligibility (a mailbox at the site's own domain)", () => {
+  it("accepts any mailbox at the site's domain or its parents", () => {
+    expect(emailQualifiesFor("info@example.co.za", "shop.example.co.za")).toBe(true);
+    expect(emailQualifiesFor("Nhlanhla@Example.co.za", "example.co.za")).toBe(true);
+    expect(emailQualifiesFor("admin@shop.example.co.za", "shop.example.co.za")).toBe(true);
   });
-  it("qualifies only reserved local parts at an authorization domain", () => {
-    expect(emailQualifiesFor("admin@example.co.za", "shop.example.co.za")).toBe(true);
-    expect(emailQualifiesFor("Webmaster@Shop.Example.co.za", "shop.example.co.za")).toBe(true);
-    expect(emailQualifiesFor("info@example.co.za", "shop.example.co.za")).toBe(false); // not a reserved mailbox
-    expect(emailQualifiesFor("john@example.co.za", "example.co.za")).toBe(false);
+  it("rejects outside addresses, so a requester can't approve their own scan of someone else's site", () => {
+    expect(emailQualifiesFor("me@gmail.com", "example.co.za")).toBe(false);
     expect(emailQualifiesFor("admin@evil.co.za", "example.co.za")).toBe(false);
-    expect(emailQualifiesFor("admin@co.za", "example.co.za")).toBe(false); // public suffix is not an authorization domain
+    expect(emailQualifiesFor("admin@example.co.za.evil.com", "example.co.za")).toBe(false);
+    expect(emailQualifiesFor("admin@co.za", "example.co.za")).toBe(false); // public suffix is not the site's domain
     expect(emailQualifiesFor("admin@other.example.co.za", "shop.example.co.za")).toBe(false); // sibling subdomain
+    expect(emailQualifiesFor("not an email", "example.co.za")).toBe(false);
+  });
+  it("disables email approval for free-mail domains (anyone can get a mailbox there)", () => {
+    expect(emailVerificationAllowed("mail.google.com")).toBe(true); // google.com isn't free-mail; gmail.com is
+    expect(emailVerificationAllowed("gmail.com")).toBe(false);
+    expect(emailQualifiesFor("someone@gmail.com", "gmail.com")).toBe(false);
+    expect(emailVerificationAllowed("localhost")).toBe(false);
   });
 });
 

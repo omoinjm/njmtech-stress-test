@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { resolveTxt } from "node:dns/promises";
 import { and, count, eq, gt, isNull } from "drizzle-orm";
 import { getDb, t } from "./db";
-import { env } from "./env";
+import { env, isAdminEmail } from "./env";
 import { sendEmail } from "./email";
 import { createFetcher } from "./scanner/net";
 
@@ -87,10 +87,24 @@ export async function addDomain(userId: string, input: string) {
   return row;
 }
 
-// ---------- One-click email verification (CA/Browser Forum BR 3.2.2.4.4 "constructed email") ----------
+// ---------- One-click email verification ----------
+// Proof: someone with a mailbox AT the website's own domain approves the deep scan. The requester
+// can't send the approval to an outside address (they'd just approve themselves).
 
-/** The only mailboxes accepted as proof of control: reserved admin addresses at the domain. */
-export const ADMIN_LOCAL_PARTS = ["admin", "administrator", "webmaster", "hostmaster", "postmaster"] as const;
+/** Suggested mailboxes (the CA/Browser Forum "constructed" admin addresses, plus common ones). */
+export const SUGGESTED_LOCAL_PARTS = ["info", "admin", "hello", "contact", "webmaster", "postmaster"] as const;
+
+/** Domains whose mailboxes are handed out to the public: a mailbox there proves nothing about a site. */
+const FREE_MAIL = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com", "ymail.com",
+  "icloud.com", "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "gmx.com", "gmx.net", "mail.com",
+  "zoho.com", "yandex.com", "yandex.ru", "fastmail.com", "tutanota.com", "hey.com", "webmail.co.za", "mweb.co.za",
+  "telkomsa.net", "vodamail.co.za", "iafrica.com", "lantic.net",
+]);
+
+/** Free-mail and similar providers can't be verified by email (use DNS/file instead). */
+export const emailVerificationAllowed = (hostname: string) =>
+  hostname.includes(".") && !/^[\d.]+$/.test(hostname) && !FREE_MAIL.has(registrableDomain(hostname));
 
 // Second-level labels used under 2-letter ccTLDs (co.za, com.au, org.uk, …).
 const SLD = new Set(["co", "com", "org", "net", "gov", "ac", "edu", "nom", "web", "ltd", "plc", "mil", "or", "ne", "go"]);
@@ -119,15 +133,11 @@ export function authorizationDomains(hostname: string): string[] {
   return out.length ? out : [base];
 }
 
-export function verificationEmailOptions(hostname: string): string[] {
-  if (!hostname.includes(".") || /^[\d.]+$/.test(hostname)) return [];
-  const base = registrableDomain(hostname);
-  return ADMIN_LOCAL_PARTS.map((l) => `${l}@${base}`);
-}
-
+/** Any real mailbox at the site's domain (or a parent of it, down to the registrable domain). */
 export function emailQualifiesFor(email: string, hostname: string): boolean {
-  const [local, domain] = email.toLowerCase().split("@");
-  return (ADMIN_LOCAL_PARTS as readonly string[]).includes(local) && authorizationDomains(hostname).includes(domain);
+  if (!emailVerificationAllowed(hostname)) return false;
+  const m = email.trim().toLowerCase().match(/^([a-z0-9._%+-]{1,64})@([a-z0-9.-]+)$/);
+  return !!m && authorizationDomains(hostname).includes(m[2]);
 }
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -138,13 +148,15 @@ export async function sendDomainVerificationEmail(domainId: string, userId: stri
   const d = await db.query.domains.findFirst({ where: and(eq(t.domains.id, domainId), eq(t.domains.userId, userId)) });
   if (!d) throw new InputError("Website not found.");
   const to = email.trim().toLowerCase();
-  if (!emailQualifiesFor(to, d.hostname)) throw new InputError("Choose one of the listed admin addresses for this domain.");
+  if (!emailQualifiesFor(to, d.hostname))
+    throw new InputError(`The approval must go to a mailbox at ${registrableDomain(d.hostname)}, so someone inside the business approves it.`);
 
   const [{ n }] = await db
     .select({ n: count() })
     .from(t.domainVerifications)
     .where(and(eq(t.domainVerifications.domainId, d.id), gt(t.domainVerifications.createdAt, new Date(Date.now() - 3_600_000))));
-  if (n >= 3) throw new InputError("Too many verification emails for this site. Try again in an hour.");
+  const requesterIsOwner = isAdminEmail((await db.query.users.findFirst({ where: eq(t.users.id, userId) }))?.email);
+  if (!requesterIsOwner && n >= 5) throw new InputError("Too many verification emails for this site. Try again in an hour.");
 
   const token = randomBytes(32).toString("base64url");
   await db.insert(t.domainVerifications).values({
