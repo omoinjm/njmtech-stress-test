@@ -17,7 +17,7 @@ function ErrorText({ state }: { state: FormState }) {
 }
 
 /** Landing page: starts an instant public (passive) scan; no sign-in or verification. */
-export function StartScanForm() {
+export function StartScanForm({ source, compact }: { source?: string; compact?: boolean } = {}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,12 @@ export function StartScanForm() {
     const res = await fetch("/api/scans/public", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ site: fd.get("site"), email: fd.get("email") }),
+      body: JSON.stringify({
+        site: fd.get("site"),
+        email: fd.get("email"),
+        // Explicit source (e.g. a blog CTA) wins; otherwise keep a ?src= from the landing URL.
+        source: source ?? new URLSearchParams(window.location.search).get("src") ?? undefined,
+      }),
     });
     const data = (await res.json()) as { url?: string; error?: string };
     if (res.ok && data.url) return router.push(data.url);
@@ -37,7 +42,7 @@ export function StartScanForm() {
     setPending(false);
   }
   return (
-    <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+    <form onSubmit={onSubmit} className={`grid gap-3 ${compact ? "md:grid-cols-[1fr_1fr_auto]" : "sm:grid-cols-[1fr_1fr_auto]"}`}>
       <input name="site" required placeholder="yourshop.co.za" className={inputCls} aria-label="Website" />
       <input name="email" type="email" required placeholder="you@yourshop.co.za" className={inputCls} aria-label="Email" />
       <button className={btnCls} disabled={pending}>{pending ? "Starting…" : "Scan my site free"}</button>

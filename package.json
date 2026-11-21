@@ -15,9 +15,13 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.generated.d.ts",
-    "build:next": "next build"
+    "build:next": "next build",
+    "sanity:seed": "node scripts/sanity-seed.mjs"
   },
   "dependencies": {
+    "@portabletext/react": "4.0.3",
+    "@sanity/client": "7.13.1",
+    "@sanity/image-url": "1.2.0",
     "drizzle-orm": "^0.45.4",
     "next": "16.4.6",
     "react": "19.3.0",
@@ -39,7 +43,8 @@
     "tailwindcss": "4.3.3",
     "typescript": "^5",
     "vitest": "^5.1.1",
-    "wrangler": "^4.166.0"
+    "wrangler": "^4.166.0",
+    "marked": "15.0.12"
   },
   "packageManager": "pnpm@10.6.5"
 }

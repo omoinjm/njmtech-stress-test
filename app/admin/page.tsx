@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { setQuoteAction, updateLeadStatusAction } from "@/app/actions";
 import { formatZar } from "@/lib/env";
+import { allPostsForAdmin } from "@/lib/blog";
 import { Card } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth";
 import { getDb, t } from "@/lib/db";
@@ -39,6 +40,7 @@ async function Inner() {
     .innerJoin(t.scans, eq(t.payments.scanId, t.scans.id))
     .orderBy(desc(t.payments.createdAt))
     .limit(100);
+  const posts = await allPostsForAdmin().catch(() => []);
   const revenue = payments.filter((x) => x.p.status === "paid" && x.p.mode !== "test").reduce((sum, x) => sum + x.p.amountCents, 0);
 
   return (
@@ -114,7 +116,7 @@ async function Inner() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
-              <tr><th className="py-2">When</th><th>Customer</th><th>Site</th><th>Status</th><th>Issues</th><th>IP</th><th /></tr>
+              <tr><th className="py-2">When</th><th>Customer</th><th>Site</th><th>Kind</th><th>Status</th><th>Issues</th><th>Source</th><th>IP</th><th /></tr>
             </thead>
             <tbody className="divide-y divide-black/5 dark:divide-white/10">
               {scans.map(({ scan, email, findings, critical }) => (
@@ -122,8 +124,10 @@ async function Inner() {
                   <td className="py-2 whitespace-nowrap">{scan.createdAt.toLocaleString("en-ZA")}</td>
                   <td>{email}</td>
                   <td className="font-mono text-xs">{scan.origin}</td>
+                  <td className="text-xs">{scan.kind}</td>
                   <td>{scan.status}</td>
                   <td>{findings} {critical > 0 && <span className="text-red-600">({critical} high+)</span>}</td>
+                  <td className="max-w-[10rem] truncate text-xs text-slate-500" title={scan.source ?? ""}>{scan.source ?? "-"}</td>
                   <td className="text-xs text-slate-500">{scan.requesterIp ?? "-"}</td>
                   <td><Link className="underline" href={`/admin/scans/${scan.id}`}>Full report</Link></td>
                 </tr>
@@ -131,6 +135,23 @@ async function Inner() {
             </tbody>
           </table>
         </div>
+      </Card>
+      <Card>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold">Blog posts</h2>
+          <a href="https://njmtech-security.sanity.studio/" target="_blank" rel="noopener" className="text-sm text-emerald-600 underline">Open Sanity Studio →</a>
+        </div>
+        <ul className="divide-y divide-black/5 text-sm dark:divide-white/10">
+          {posts.map((p) => (
+            <li key={p.slug} className="flex items-center justify-between gap-3 py-2">
+              <Link href={`/blog/${p.slug}`} className="hover:underline">{p.title}</Link>
+              <span className={p.status === "live" ? "text-emerald-600" : "text-amber-600"}>
+                {p.status === "live" ? `live · ${p.publishedAt.slice(0, 10)}` : p.status}
+              </span>
+            </li>
+          ))}
+          {posts.length === 0 && <li className="py-2 text-slate-500">No posts yet.</li>}
+        </ul>
       </Card>
     </div>
   );

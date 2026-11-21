@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, t } from "./db";
 import type { LeadStatus, LoadTestSummary, ScanKind, ScanStatus } from "./db/schema";
 import { isVerified } from "./domains";
+import { fixGuideMap } from "./blog";
 import { env, isAdminEmail } from "./env";
 import { buildTeaser, countBySeverity, securityScore, type TeaserReport } from "./report/teaser";
 import { checkKeysFor } from "./scanner/check-keys";
@@ -35,6 +36,8 @@ export type ScanView = {
   ownerIsAdmin: boolean;
   reportPriceCents: number;
   lead: { status: LeadStatus; quoteCents: number | null; quoteNote: string | null } | null;
+  /** finding id → published fix guide. Only for findings the viewer can already see in full. */
+  fixGuides: Record<string, { slug: string; title: string }>;
 };
 
 function safeEqual(a: string, b: string) {
@@ -66,6 +69,13 @@ export async function getScanView(scanId: string, viewer: { userId?: string | nu
   const ownerIsAdmin = isAdminEmail(owner?.email);
   const unlocked = !!scan.unlockedAt || ownerIsAdmin;
   const sorted = [...rows].sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
+  const teaser = done && !unlocked ? buildTeaser(rows) : null;
+  const visible = done ? (unlocked ? rows : rows.filter((r) => r.id === teaser?.unlocked?.id)) : [];
+  const fixGuides: ScanView["fixGuides"] = {};
+  if (visible.length) {
+    const guides = await fixGuideMap(); // never throws; empty if Sanity is unreachable
+    for (const r of visible) if (guides[r.key]) fixGuides[r.id] = guides[r.key];
+  }
   return {
     id: scan.id,
     origin: scan.origin,
@@ -81,11 +91,12 @@ export async function getScanView(scanId: string, viewer: { userId?: string | nu
     error: scan.error,
     createdAt: scan.createdAt.toISOString(),
     loadTest: scan.loadTest ?? null,
-    report: done && !unlocked ? buildTeaser(rows) : null,
+    report: teaser,
     full: done && unlocked ? { score: securityScore(rows), counts: countBySeverity(rows), findings: sorted } : null,
     unlocked,
     ownerIsAdmin,
     reportPriceCents: env.reportPriceCents(),
     lead: lead ? { status: lead.status, quoteCents: lead.quoteCents, quoteNote: lead.quoteNote } : null,
+    fixGuides,
   };
 }

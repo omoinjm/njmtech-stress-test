@@ -59,7 +59,7 @@ void sql`delete from domains where origin = ${TARGET}`;
 const weakPublic = spawn(process.execPath, ["scripts/weak-test-server.mjs"], { stdio: "ignore" });
 await new Promise((res) => setTimeout(res, 800));
 try {
-  r = await fetch(`${BASE}/api/scans/public`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ site: TARGET, email }) });
+  r = await fetch(`${BASE}/api/scans/public`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ site: TARGET, email, source: "blog-e2e-test" }) });
   const pub = await r.json();
   check("public scan starts without sign-in or verification", r.status === 201 && pub.url?.includes("?t="), pub.error ?? pub.url);
   const [pubPath, pubQuery] = pub.url.split("?");
@@ -76,6 +76,7 @@ try {
   const probing = pubKeys.filter((k) => /^exposed\.|^cors\.|wp-user-enum|wp-xmlrpc/.test(k));
   check("public scan ran no probing checks", probing.length === 0, probing.join(",") || pubKeys.join(", "));
   check("public scan still finds passive issues", pubKeys.includes("headers.csp-missing") && pubKeys.includes("cms.outdated-jquery"));
+  check("scan source recorded for attribution", sql`select source from scans where id = ${pub.id}`[0]?.source === "blog-e2e-test");
   check("anonymous viewer is not treated as owner", pv.viewerIsOwner === false && !!pv.ownerEmailHint);
   r = await fetch(BASE + pubPath, { redirect: "manual" });
   check("report page without link → sign-in", r.status === 307 && (r.headers.get("location") ?? "").includes("/login"));
@@ -183,6 +184,22 @@ try {
   await sql`insert into leads (id, scan_id, user_id, name, status, created_at) select ${crypto.randomUUID()}, ${scanId}, user_id, 'E2E Tester', 'new', ${Date.now()} from scans where id = ${scanId}`;
   r = await adminReq("/admin");
   check("lead visible in admin", (await r.text()).includes("E2E Tester"));
+
+  // 8b. Blog, SEO files.
+  r = await fetch(`${BASE}/blog`);
+  check("blog index renders", r.status === 200 && (await r.text()).includes("Website security, in plain English"));
+  r = await fetch(`${BASE}/blog/will-your-online-store-survive-black-friday`);
+  const postHtml = await r.text();
+  check("blog post renders with inline + end scan CTA and schema", r.status === 200 && (postHtml.match(/Check your/g) ?? []).length >= 2 && postHtml.includes('"@type":"BlogPosting"'));
+  r = await fetch(`${BASE}/blog/does-not-exist`);
+  check("unknown blog post → 404", r.status === 404);
+  r = await fetch(`${BASE}/sitemap.xml`);
+  check("sitemap lists the blog", r.status === 200 && (await r.text()).includes("/blog</loc>"));
+  r = await fetch(`${BASE}/robots.txt`);
+  const robots = await r.text();
+  check("robots blocks private pages", robots.includes("Disallow: /admin") && robots.includes("Disallow: /scans"));
+  r = await fetch(`${BASE}/blog/rss.xml`);
+  check("RSS feed served", r.status === 200 && (r.headers.get("content-type") ?? "").includes("rss"));
 
   // 9. Owner/admin: the tool is free (no paywall, no payment).
   void sql`delete from domains where origin = ${TARGET} and user_id = (select id from users where email = ${adminEmail})`;

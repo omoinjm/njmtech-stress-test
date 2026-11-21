@@ -32,8 +32,11 @@
     "APP_URL": "https://security.njmtech.co.za",
     "EMAIL_FROM": "NJM Tech Security <security@send.njmtech.co.za>",
     "EMAIL_REPLY_TO": "",
-    "REPORT_PRICE_CENTS": "49900"
+    "REPORT_PRICE_CENTS": "49900",
+    "SANITY_PROJECT_ID": "w1uoie7f",
+    "SANITY_DATASET": "production"
   }
   // Secrets (Infisical env-vault:/njmtech-security → wrangler secret bulk):
-  //   SESSION_SECRET, RESEND_API_KEY, YOCO_SECRET_KEY, YOCO_WEBHOOK_SECRET, ADMIN_EMAILS (kept out of this public repo)
+  //   SESSION_SECRET, RESEND_API_KEY, YOCO_SECRET_KEY, YOCO_WEBHOOK_SECRET, ADMIN_EMAILS (kept out of this public repo),
+  //   SANITY_API_READ_TOKEN (admin draft previews). SANITY_API_WRITE_TOKEN stays in Infisical only (scripts).
 }

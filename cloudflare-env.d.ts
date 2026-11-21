@@ -15,4 +15,7 @@ interface CloudflareEnv {
   YOCO_SECRET_KEY: string;
   YOCO_WEBHOOK_SECRET: string;
   ALLOW_PRIVATE_TARGETS?: string;
+  SANITY_PROJECT_ID: string;
+  SANITY_DATASET: string;
+  SANITY_API_READ_TOKEN: string;
 }

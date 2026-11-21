@@ -86,7 +86,7 @@ export async function createScan(opts: {
  * Instant passive scan, no ownership verification. Only "public" checks run: the same data any
  * visitor's browser receives (homepage response, TLS handshake, public DNS). No probing, no load.
  */
-export async function createPublicScan(opts: { site: string; email: string; ip: string | null }) {
+export async function createPublicScan(opts: { site: string; email: string; ip: string | null; source?: string | null }) {
   const db = await getDb();
   const { hostname } = normalizeOrigin(opts.site); // throws InputError on bad input
   const email = normalizeEmail(opts.email);
@@ -125,6 +125,7 @@ export async function createPublicScan(opts: { site: string; email: string; ip: 
       accessToken: newAccessToken(),
       includeLoadTest: false,
       requesterIp: opts.ip,
+      source: opts.source ?? null,
     })
     .returning();
   await startScanRun(scan.id);
