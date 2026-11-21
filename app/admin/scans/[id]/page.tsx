@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { CopyMarkdownButton } from "@/components/copy-markdown-button";
 import { PrintButton } from "@/components/print-button";
+import { reportToMarkdown } from "@/lib/report/markdown";
 import { Card, ScoreRing, SeverityBadge } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth";
 import { getDb, t } from "@/lib/db";
@@ -32,7 +34,19 @@ async function Inner({ params }: { params: PageProps<"/admin/scans/[id]">["param
           </p>
           {scan.error && <p className="text-sm text-red-600">{scan.error}</p>}
         </div>
-        <PrintButton />
+        <div className="no-print flex flex-wrap gap-2">
+          <CopyMarkdownButton
+            markdown={reportToMarkdown({
+              origin: scan.origin,
+              kind: scan.kind,
+              scannedAt: scan.createdAt,
+              score: securityScore(findings),
+              findings,
+              loadTest: lt,
+            })}
+          />
+          <PrintButton />
+        </div>
       </Card>
       {lt && (
         <Card>

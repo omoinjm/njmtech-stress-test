@@ -142,6 +142,7 @@ try {
   check("raw secret never in teaser JSON", !JSON.stringify(view).includes("hunter2"));
   const teaserHtml = await (await req(`/scans/${scanId}`)).text();
   check("teaser HTML has no locked fix text", !teaserHtml.includes("Assume every secret in it is compromised"));
+  check("teaser has no Copy Markdown button", !teaserHtml.includes("Copy Markdown"));
   const expected = ["exposed.env", "exposed.git", "cors.reflected-credentials", "cookies.insecure-flags", "cms.wp-user-enum",
     "cms.wp-xmlrpc", "cms.outdated-jquery", "leak.server-version", "leak.powered-by", "tls.no-https"];
   const found = sql`select key from findings where scan_id = ${scanId}`.map((f) => f.key);
@@ -171,12 +172,14 @@ try {
   const html = await r.text();
   check("teaser page renders", r.status === 200);
   check("unlocked HTML shows full fixes", html.includes("Assume every secret in it is compromised"));
+  check("unlocked report has Copy Markdown next to Export PDF", html.includes("Copy Markdown") && html.includes("Export PDF"));
   r = await req(`/admin`);
   check("customer cannot open /admin", r.status === 307 || !(await r.text()).includes("Fix requests"));
   const adminReq = (path) => fetch(BASE + path, { redirect: "manual", headers: { cookie: adminCookie } });
   r = await adminReq(`/admin/scans/${scanId}`);
   const adminHtml = await r.text();
   check("admin full report renders all fixes", r.status === 200 && adminHtml.includes("Assume every secret in it is compromised"));
+  check("admin report has Copy Markdown", adminHtml.includes("Copy Markdown"));
   await sql`insert into leads (id, scan_id, user_id, name, status, created_at) select ${crypto.randomUUID()}, ${scanId}, user_id, 'E2E Tester', 'new', ${Date.now()} from scans where id = ${scanId}`;
   r = await adminReq("/admin");
   check("lead visible in admin", (await r.text()).includes("E2E Tester"));

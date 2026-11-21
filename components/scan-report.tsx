@@ -5,6 +5,8 @@ import { submitLeadAction } from "@/app/actions";
 import type { FullFinding, ScanView } from "@/lib/reports";
 import type { Severity } from "@/lib/scanner/types";
 import Link from "next/link";
+import { reportToMarkdown } from "@/lib/report/markdown";
+import { CopyMarkdownButton } from "./copy-markdown-button";
 import { ScanSignIn } from "./forms";
 import { btnCls, btnGhostCls, Card, inputCls, ScoreRing, SeverityBadge } from "./ui";
 
@@ -81,10 +83,22 @@ export function ScanReport({ initial, paymentNotice }: { initial: ScanView; paym
             ))}
           </div>
         </div>
-        {view.unlocked && (
-          <button onClick={() => window.print()} className="no-print rounded-md border border-black/15 px-3 py-2 text-sm dark:border-white/15">
-            Export PDF
-          </button>
+        {view.full && (
+          <div className="no-print flex flex-wrap gap-2">
+            <CopyMarkdownButton
+              markdown={reportToMarkdown({
+                origin: view.origin,
+                kind: view.kind,
+                scannedAt: view.createdAt,
+                score: view.full.score,
+                findings: view.full.findings,
+                loadTest: view.loadTest,
+              })}
+            />
+            <button onClick={() => window.print()} className={btnGhostCls}>
+              Export PDF
+            </button>
+          </div>
         )}
       </Card>
 
