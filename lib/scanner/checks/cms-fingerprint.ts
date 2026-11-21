@@ -22,7 +22,7 @@ const JQUERY_RES = [
 export const cmsCheck: Check = {
   key: "cms",
   label: "CMS & library fingerprint",
-  async run({ origin, fetch, home }) {
+  async run({ home }) {
     const out: RawFinding[] = [];
     const body = home.body;
 
@@ -41,8 +41,19 @@ export const cmsCheck: Check = {
       }
     }
 
-    const isWordPress = /wp-content|wp-includes/i.test(body) || /wordpress/i.test(gen ?? "");
-    if (isWordPress) {
+    return out;
+  },
+};
+
+export const isWordPress = (body: string) => /wp-content|wp-includes/i.test(body) || /<meta[^>]+generator[^>]+wordpress/i.test(body);
+
+/** Deep only: requests WordPress endpoints that aren't linked from the page. */
+export const wordpressCheck: Check = {
+  key: "wordpress",
+  label: "WordPress exposure",
+  async run({ origin, fetch, home }) {
+    const out: RawFinding[] = [];
+    if (!isWordPress(home.body)) return out;
       try {
         const res = await fetch(origin + "/wp-json/wp/v2/users", { maxBytes: 32_768 });
         if (res.status === 200) {
@@ -63,7 +74,6 @@ export const cmsCheck: Check = {
           out.push({ key: "cms.wp-xmlrpc", evidence: `${origin}/xmlrpc.php is reachable` });
         }
       } catch {}
-    }
     return out;
   },
 };

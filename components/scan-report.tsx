@@ -4,6 +4,8 @@ import { useActionState, useEffect, useState } from "react";
 import { submitLeadAction } from "@/app/actions";
 import type { FullFinding, ScanView } from "@/lib/reports";
 import type { Severity } from "@/lib/scanner/types";
+import Link from "next/link";
+import { ScanSignIn } from "./forms";
 import { btnCls, btnGhostCls, Card, inputCls, ScoreRing, SeverityBadge } from "./ui";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -19,11 +21,11 @@ export function ScanReport({ initial, paymentNotice }: { initial: ScanView; paym
   useEffect(() => {
     if (!running) return;
     const id = setInterval(async () => {
-      const res = await fetch(`/api/scans/${view.id}`, { cache: "no-store" });
+      const res = await fetch(`/api/scans/${view.id}${view.accessToken ? `?t=${view.accessToken}` : ""}`, { cache: "no-store" });
       if (res.ok) setView(await res.json());
     }, 2500);
     return () => clearInterval(id);
-  }, [running, view.id]);
+  }, [running, view.id, view.accessToken]);
 
   const host = new URL(view.origin).host;
 
@@ -31,8 +33,11 @@ export function ScanReport({ initial, paymentNotice }: { initial: ScanView; paym
     const pct = Math.round((view.progress / Math.max(1, view.total)) * 100);
     return (
       <Card className="mx-auto max-w-xl text-center">
-        <h1 className="text-xl font-semibold">Scanning {host}…</h1>
-        <p className="mt-1 text-sm text-slate-500">This usually takes 1–2 minutes. You can leave this page; we&apos;ll email you when it&apos;s ready.</p>
+        <h1 className="text-xl font-semibold">{view.kind === "deep" ? "Deep scanning" : "Scanning"} {host}…</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {view.kind === "deep" ? "This usually takes 1–2 minutes." : "This usually takes under a minute."} You can leave this page;
+          we&apos;ll email you the link when it&apos;s ready.
+        </p>
         <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
           <div className="h-full bg-emerald-600 transition-all" style={{ width: `${Math.max(5, pct)}%` }} />
         </div>
@@ -59,6 +64,11 @@ export function ScanReport({ initial, paymentNotice }: { initial: ScanView; paym
       <Card className="flex flex-col items-center gap-6 sm:flex-row">
         <ScoreRing score={summary.score} />
         <div className="flex-1">
+          <div className="mb-1">
+            <span className={`rounded px-2 py-0.5 text-[11px] font-bold uppercase ${view.kind === "deep" ? "bg-violet-600 text-white" : "bg-slate-500/20 text-slate-600 dark:text-slate-300"}`}>
+              {view.kind === "deep" ? "Deep scan" : "Public scan"}
+            </span>
+          </div>
           <h1 className="text-2xl font-bold">{view.unlocked ? "Full security report" : "Security report"} for {host}</h1>
           <p className="text-sm text-slate-500">
             {total === 0 ? "No issues found. Nice work!" : `We found ${total} issue${total === 1 ? "" : "s"} on your site.`}
@@ -86,7 +96,7 @@ export function ScanReport({ initial, paymentNotice }: { initial: ScanView; paym
         <TeaserBody view={view} />
       )}
 
-      {total > 0 && <NextStep view={view} />}
+      {(total > 0 || view.kind === "public") && <NextStep view={view} />}
     </div>
   );
 }
@@ -200,11 +210,41 @@ function PayButton({ scanId, kind, label }: { scanId: string; kind: "report_unlo
 }
 
 /** Funnel: unlock report → request fix quote → pay quote. Both payments are optional and independent. */
+function DeepScanCta({ view }: { view: ScanView }) {
+  return (
+    <Card className="border-2 border-violet-600/60">
+      <h2 className="text-lg font-bold">🔬 This was a public scan. Run the deep scan + stress test</h2>
+      <p className="mt-1 mb-4 text-sm text-slate-600 dark:text-slate-300">
+        The free scan only checks what any visitor can see. The deep scan also looks for leaked password files, exposed
+        backups and Git folders, WordPress weaknesses, cross-site data leaks, and how your site holds up with 50 simultaneous
+        visitors. Because it actively tests the site, we need a quick one-click approval from the domain owner first.
+      </p>
+      <Link href={`/domains/${view.domainId}`} className={btnCls}>
+        {view.domainVerified ? "Start the deep scan" : "Approve & run the deep scan"}
+      </Link>
+    </Card>
+  );
+}
+
 function NextStep({ view }: { view: ScanView }) {
   const lead = view.lead;
+  if (!view.viewerIsOwner) {
+    return (
+      <div className="no-print grid gap-4">
+        <Card className="border-2 border-emerald-600">
+          <h2 className="text-lg font-bold">Unlock the full report, get a fix quote, or run a deep scan</h2>
+          <p className="mt-1 mb-4 text-sm text-slate-600 dark:text-slate-300">
+            Sign in with the email this report was sent to. No password needed.
+          </p>
+          <ScanSignIn scanId={view.id} token={view.accessToken ?? ""} emailHint={view.ownerEmailHint} />
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="no-print grid gap-4">
-      {!view.unlocked && (
+      {view.kind === "public" && <DeepScanCta view={view} />}
+      {!view.unlocked && (view.report?.locked.length ?? 0) + (view.report?.unlocked ? 1 : 0) > 0 && (
         <Card className="border-2 border-emerald-600">
           <h2 className="text-lg font-bold">Unlock the full report: {zar(view.reportPriceCents)}</h2>
           <p className="mt-1 mb-4 text-sm text-slate-600 dark:text-slate-300">
@@ -230,9 +270,9 @@ function NextStep({ view }: { view: ScanView }) {
           <h2 className="mt-2 font-semibold">Fix work booked</h2>
           <p className="text-sm text-slate-500">Payment received. Our team will be in touch to schedule your fixes.</p>
         </Card>
-      ) : (
+      ) : (view.full?.findings.length ?? 0) + (view.report?.locked.length ?? 0) + (view.report?.unlocked ? 1 : 0) > 0 ? (
         <LeadCard scanId={view.id} submitted={!!lead} unlocked={view.unlocked} />
-      )}
+      ) : null}
     </div>
   );
 }

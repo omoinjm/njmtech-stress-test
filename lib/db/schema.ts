@@ -34,13 +34,29 @@ export const domains = sqliteTable(
     hostname: text("hostname").notNull(),
     verifyToken: text("verify_token").notNull(),
     verifiedAt: ts("verified_at"),
-    verifyMethod: text("verify_method", { enum: ["dns", "file"] }),
+    verifyMethod: text("verify_method", { enum: ["dns", "file", "email"] }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("domains_user_origin").on(t.userId, t.origin)],
 );
 
+/** One-click ownership proof: link emailed to admin@/webmaster@/… at the domain (CA/B Forum style). */
+export const domainVerifications = sqliteTable(
+  "domain_verifications",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    domainId: text("domain_id").notNull().references(() => domains.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    expiresAt: ts("expires_at").notNull(),
+    usedAt: ts("used_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("domain_verifications_domain").on(t.domainId, t.createdAt)],
+);
+
 export type ScanStatus = "queued" | "running" | "done" | "failed";
+/** public = passive checks anyone's browser could do (no verification); deep = probes + stress test (verified only). */
+export type ScanKind = "public" | "deep";
 
 export type LoadTestSummary = {
   requests: number;
@@ -63,6 +79,9 @@ export const scans = sqliteTable(
     domainId: text("domain_id").notNull().references(() => domains.id, { onDelete: "cascade" }),
     origin: text("origin").notNull(),
     status: text("status").$type<ScanStatus>().notNull().default("queued"),
+    kind: text("kind").$type<ScanKind>().notNull().default("deep"),
+    /** Unguessable token so the requester can view a public scan before signing in. */
+    accessToken: text("access_token"),
     includeLoadTest: integer("include_load_test", { mode: "boolean" }).notNull().default(false),
     requesterIp: text("requester_ip"),
     runId: text("run_id"),

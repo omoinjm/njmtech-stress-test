@@ -1,6 +1,7 @@
 import { and, count, eq, gt, inArray } from "drizzle-orm";
 import { getDb, t, type DB } from "./db";
-import { isVerified } from "./domains";
+import { normalizeEmail } from "./auth";
+import { addDomain, isVerified, normalizeOrigin } from "./domains";
 
 export class ScanError extends Error {
   constructor(public status: number, message: string) {
@@ -8,7 +9,21 @@ export class ScanError extends Error {
   }
 }
 
-export const LIMITS = { scansPerUserPerDay: 5, scansPerIpPerDay: 10, loadTestsPerDomainPerDay: 1 };
+export const LIMITS = {
+  scansPerUserPerDay: 5,
+  scansPerIpPerDay: 10,
+  loadTestsPerDomainPerDay: 1,
+  publicScansPerIpPerDay: 10,
+  /** Across all requesters: stops the free scan being used as a recon tool against one site. */
+  publicScansPerHostPerDay: 5,
+  publicScansPerEmailPerDay: 10,
+};
+
+export const newAccessToken = () => {
+  const b = new Uint8Array(24);
+  crypto.getRandomValues(b);
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
 
 const dayAgo = () => new Date(Date.now() - 86_400_000);
 
@@ -47,9 +62,65 @@ export async function createScan(opts: {
   await db.update(t.users).set({ termsAcceptedAt: new Date() }).where(eq(t.users.id, opts.userId));
   const [scan] = await db
     .insert(t.scans)
-    .values({ userId: opts.userId, domainId: domain.id, origin: domain.origin, includeLoadTest: opts.includeLoadTest, requesterIp: opts.ip })
+    .values({
+      userId: opts.userId,
+      domainId: domain.id,
+      origin: domain.origin,
+      kind: "deep",
+      accessToken: newAccessToken(),
+      includeLoadTest: opts.includeLoadTest,
+      requesterIp: opts.ip,
+    })
     .returning();
 
+  await startScanRun(scan.id);
+  return scan;
+}
+
+/**
+ * Instant passive scan, no ownership verification. Only "public" checks run: the same data any
+ * visitor's browser receives (homepage response, TLS handshake, public DNS). No probing, no load.
+ */
+export async function createPublicScan(opts: { site: string; email: string; ip: string | null }) {
+  const db = await getDb();
+  const { hostname } = normalizeOrigin(opts.site); // throws InputError on bad input
+  const email = normalizeEmail(opts.email);
+
+  const [user] = await db
+    .insert(t.users)
+    .values({ email })
+    .onConflictDoUpdate({ target: t.users.email, set: { email } })
+    .returning();
+
+  const publicSince = (extra: ReturnType<typeof and>) => and(eq(t.scans.kind, "public"), gt(t.scans.createdAt, dayAgo()), extra);
+  if (opts.ip && (await countScans(db, publicSince(eq(t.scans.requesterIp, opts.ip)))) >= LIMITS.publicScansPerIpPerDay)
+    throw new ScanError(429, "Too many free scans from your network today. Please try again tomorrow.");
+  if ((await countScans(db, publicSince(eq(t.scans.userId, user.id)))) >= LIMITS.publicScansPerEmailPerDay)
+    throw new ScanError(429, "Too many free scans for this email today.");
+  const hostScans = await db
+    .select({ n: count() })
+    .from(t.scans)
+    .innerJoin(t.domains, eq(t.scans.domainId, t.domains.id))
+    .where(and(eq(t.scans.kind, "public"), gt(t.scans.createdAt, dayAgo()), eq(t.domains.hostname, hostname)));
+  if (hostScans[0].n >= LIMITS.publicScansPerHostPerDay)
+    throw new ScanError(429, `${hostname} has been scanned several times today. Please try again tomorrow.`);
+
+  const domain = await addDomain(user.id, opts.site);
+  if ((await countScans(db, and(eq(t.scans.domainId, domain.id), inArray(t.scans.status, ["queued", "running"])))) > 0)
+    throw new ScanError(409, "A scan of this website is already running.");
+
+  const [scan] = await db
+    .insert(t.scans)
+    .values({
+      userId: user.id,
+      domainId: domain.id,
+      origin: domain.origin,
+      kind: "public",
+      accessToken: newAccessToken(),
+      includeLoadTest: false,
+      requesterIp: opts.ip,
+    })
+    .returning();
   await startScanRun(scan.id);
   return scan;
 }

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? null;
+  const ip = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? null;
   try {
     const scan = await createScan({ ...parsed.data, userId: user.id, ip });
     return NextResponse.json({ id: scan.id }, { status: 201 });

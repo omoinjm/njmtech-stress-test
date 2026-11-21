@@ -33,7 +33,7 @@ const json = (path, body) =>
 
 // 1. Login via a magic-link token inserted directly (simulates clicking the email link).
 const token = randomBytes(24).toString("base64url");
-await sql`insert into login_tokens (token_hash, email, redirect_to, expires_at, created_at)
+void sql`insert into login_tokens (token_hash, email, redirect_to, expires_at, created_at)
           values (${createHash("sha256").update(token).digest("hex")}, ${email}, '/dashboard', ${Date.now() + 600_000}, ${Date.now()})`;
 let r = await req(`/auth/callback?token=${token}`);
 cookie = (r.headers.get("set-cookie") ?? "").split(";")[0];
@@ -42,7 +42,37 @@ r = await fetch(`${BASE}/auth/callback?token=${token}`, { redirect: "manual" });
 check("magic link is single-use", (r.headers.get("location") ?? "").includes("error=expired"));
 
 // 2. Add the weak test site (fresh each run: drop any earlier copy + its scans).
-await sql`delete from domains where origin = ${TARGET} and user_id = (select id from users where email = ${email})`;
+void sql`delete from domains where origin = ${TARGET}`;
+
+// 2a. Public scan: no session, no verification, only passive checks.
+const weakPublic = spawn(process.execPath, ["scripts/weak-test-server.mjs"], { stdio: "ignore" });
+await new Promise((res) => setTimeout(res, 800));
+try {
+  r = await fetch(`${BASE}/api/scans/public`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ site: TARGET, email }) });
+  const pub = await r.json();
+  check("public scan starts without sign-in or verification", r.status === 201 && pub.url?.includes("?t="), pub.error ?? pub.url);
+  const [pubPath, pubQuery] = pub.url.split("?");
+  r = await fetch(`${BASE}/api/scans/${pub.id}`);
+  check("public scan JSON needs the access link", r.status === 401);
+  let pv;
+  for (let i = 0; i < 120; i++) {
+    pv = await (await fetch(`${BASE}/api/scans/${pub.id}?${pubQuery}`)).json();
+    if (pv.status === "done" || pv.status === "failed") break;
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  check("public scan finished", pv.status === "done" && pv.kind === "public", `${pv.status} ${pv.progress}/${pv.total}`);
+  const pubKeys = sql`select key from findings where scan_id = ${pub.id}`.map((f) => f.key);
+  const probing = pubKeys.filter((k) => /^exposed\.|^cors\.|wp-user-enum|wp-xmlrpc/.test(k));
+  check("public scan ran no probing checks", probing.length === 0, probing.join(",") || pubKeys.join(", "));
+  check("public scan still finds passive issues", pubKeys.includes("headers.csp-missing") && pubKeys.includes("cms.outdated-jquery"));
+  check("anonymous viewer is not treated as owner", pv.viewerIsOwner === false && !!pv.ownerEmailHint);
+  r = await fetch(BASE + pubPath, { redirect: "manual" });
+  check("report page without link → sign-in", r.status === 307 && (r.headers.get("location") ?? "").includes("/login"));
+  r = await fetch(`${BASE}${pubPath}?${pubQuery}`);
+  check("report page with link renders", r.status === 200 && (await r.text()).includes("Public scan"));
+} finally {
+  weakPublic.kill();
+}
 r = await req(`/domains/add?site=${encodeURIComponent(TARGET)}`);
 const domainId = (r.headers.get("location") ?? "").split("/domains/")[1];
 check("domain added", !!domainId, r.headers.get("location") ?? "");
@@ -53,6 +83,17 @@ r = await fetch(`${BASE}/api/scans`, { method: "POST", headers: { "content-type"
 check("no session → 401", r.status === 401);
 r = await json("/api/scans", { domainId, acceptTerms: true });
 check("unverified domain → 403", r.status === 403, (await r.json()).error);
+
+// 3a. One-click email approval (simulates the admin clicking the emailed link).
+const vtok = randomBytes(24).toString("base64url");
+void sql`insert into domain_verifications (token_hash, domain_id, email, expires_at, created_at)
+    values (${createHash("sha256").update(vtok).digest("hex")}, ${domainId}, 'admin@example.test', ${Date.now() + 600_000}, ${Date.now()})`;
+r = await fetch(`${BASE}/verify-domain?token=${vtok}`, { redirect: "manual" });
+check("email approval link verifies the domain", (r.headers.get("location") ?? "").includes(`/verified?site=`) &&
+  sql`select verify_method from domains where id = ${domainId}`[0].verify_method === "email");
+r = await fetch(`${BASE}/verify-domain?token=${vtok}`, { redirect: "manual" });
+check("email approval link is single-use", (r.headers.get("location") ?? "").includes("error=expired"));
+void sql`update domains set verified_at = NULL, verify_method = NULL where id = ${domainId}`; // reset to also test file method
 
 // 4. Ownership verification via the well-known file served by the weak server.
 const weak = spawn(process.execPath, ["scripts/weak-test-server.mjs"], { env: { ...process.env, VERIFY_TOKEN: vt }, stdio: "ignore" });

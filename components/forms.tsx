@@ -1,21 +1,47 @@
 "use client";
 
-import { useActionState } from "react";
-import { addDomainAction, loginAction, startScanAction, verifyDomainAction, type FormState } from "@/app/actions";
+import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
+import {
+  addDomainAction,
+  loginAction,
+  scanSignInAction,
+  sendVerificationEmailAction,
+  verifyDomainAction,
+  type FormState,
+} from "@/app/actions";
 import { btnCls, inputCls } from "./ui";
 
 function ErrorText({ state }: { state: FormState }) {
   return state?.error ? <p className="mt-2 text-sm text-red-600">{state.error}</p> : null;
 }
 
+/** Landing page: starts an instant public (passive) scan; no sign-in or verification. */
 export function StartScanForm() {
-  const [state, action, pending] = useActionState(startScanAction, undefined);
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    setPending(true);
+    setError(null);
+    const res = await fetch("/api/scans/public", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ site: fd.get("site"), email: fd.get("email") }),
+    });
+    const data = (await res.json()) as { url?: string; error?: string };
+    if (res.ok && data.url) return router.push(data.url);
+    setError(data.error ?? "Could not start the scan.");
+    setPending(false);
+  }
   return (
-    <form action={action} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+    <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
       <input name="site" required placeholder="yourshop.co.za" className={inputCls} aria-label="Website" />
       <input name="email" type="email" required placeholder="you@yourshop.co.za" className={inputCls} aria-label="Email" />
-      <button className={btnCls} disabled={pending}>{pending ? "Sending…" : "Scan my site"}</button>
-      <div className="sm:col-span-3"><ErrorText state={state} /></div>
+      <button className={btnCls} disabled={pending}>{pending ? "Starting…" : "Scan my site free"}</button>
+      {error && <p className="text-sm text-red-600 sm:col-span-3">{error}</p>}
     </form>
   );
 }
@@ -49,6 +75,42 @@ export function VerifyButton({ domainId }: { domainId: string }) {
     <form action={action}>
       <input type="hidden" name="domainId" value={domainId} />
       <button className={btnCls} disabled={pending}>{pending ? "Checking…" : "I've added it, verify now"}</button>
+      <ErrorText state={state} />
+    </form>
+  );
+}
+
+/** One-click ownership proof: approval link emailed to an admin mailbox at the domain. */
+export function EmailVerifyForm({ domainId, options }: { domainId: string; options: string[] }) {
+  const [state, action, pending] = useActionState(sendVerificationEmailAction, undefined);
+  if (state?.ok) {
+    return (
+      <p className="rounded-md bg-emerald-600/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
+        📬 Approval link sent to <strong>{state.sentTo}</strong>. Click it and this page unlocks the deep scan (refresh after approving).
+      </p>
+    );
+  }
+  return (
+    <form action={action} className="flex flex-col gap-2 sm:flex-row">
+      <input type="hidden" name="domainId" value={domainId} />
+      <select name="email" className={inputCls} defaultValue={options[0]}>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <button className={btnCls} disabled={pending}>{pending ? "Sending…" : "Email me the approval link"}</button>
+      <ErrorText state={state} />
+    </form>
+  );
+}
+
+/** Shown on a report opened from its link without a session: magic-link sign-in back to this report. */
+export function ScanSignIn({ scanId, token, emailHint }: { scanId: string; token: string; emailHint: string }) {
+  const [state, action, pending] = useActionState(scanSignInAction, undefined);
+  if (state?.ok) return <p className="text-sm text-emerald-600">📬 Sign-in link sent to {emailHint}. Open it to continue.</p>;
+  return (
+    <form action={action}>
+      <input type="hidden" name="scanId" value={scanId} />
+      <input type="hidden" name="t" value={token} />
+      <button className={btnCls} disabled={pending}>{pending ? "Sending…" : `Email a sign-in link to ${emailHint}`}</button>
       <ErrorText state={state} />
     </form>
   );

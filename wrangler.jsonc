@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "njmtech-security",
+  "account_id": "c2db456075f9ab9579ff7bb76674a984",
   // Custom entry: re-exports the OpenNext fetch handler + our Workflow classes.
   "main": "worker.ts",
   "compatibility_date": "2026-10-01",
@@ -18,7 +19,7 @@
     {
       "binding": "DB",
       "database_name": "njmtech-security",
-      "database_id": "REPLACE_WITH_D1_ID",
+      "database_id": "a66e1b21-0fad-4105-9ab6-c3474060de3d",
       "migrations_dir": "drizzle"
     }
   ],
@@ -31,8 +32,8 @@
     "APP_URL": "https://security.njmtech.co.za",
     "EMAIL_FROM": "NJM Tech Security <security@send.njmtech.co.za>",
     "EMAIL_REPLY_TO": "",
-    "ADMIN_EMAILS": "",
     "REPORT_PRICE_CENTS": "49900"
   }
-  // Secrets (wrangler secret put / Infisical): SESSION_SECRET, RESEND_API_KEY, YOCO_SECRET_KEY, YOCO_WEBHOOK_SECRET
+  // Secrets (Infisical env-vault:/njmtech-security → wrangler secret bulk):
+  //   SESSION_SECRET, RESEND_API_KEY, YOCO_SECRET_KEY, YOCO_WEBHOOK_SECRET, ADMIN_EMAILS (kept out of this public repo)
 }

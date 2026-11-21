@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "@/lib/findings/catalog";
-import { cmsCheck, versionLt } from "@/lib/scanner/checks/cms-fingerprint";
+import { cmsCheck, versionLt, wordpressCheck } from "@/lib/scanner/checks/cms-fingerprint";
 import { cookiesCheck } from "@/lib/scanner/checks/cookies";
 import { corsCheck } from "@/lib/scanner/checks/cors";
 import { makeEmailDnsCheck } from "@/lib/scanner/checks/email-dns";
@@ -70,15 +70,21 @@ describe("cms fingerprint", () => {
     expect(versionLt("3.5.0", "3.5.0")).toBe(false);
     expect(versionLt("3.7.1", "3.5.0")).toBe(false);
   });
-  it("flags WordPress user enumeration, xmlrpc, generator and old jQuery; masks usernames", async () => {
+  it("public cms check only reads the homepage: generator + old jQuery, no requests", async () => {
     const body = `<meta name="generator" content="WordPress 6.1.1"><script src="/wp-includes/js/jquery/jquery.min.js?ver=1.12.4"></script>`;
-    const r = await cmsCheck.run(
-      ctx({ body }, {
-        "/wp-json/wp/v2/users": { body: JSON.stringify([{ slug: "admin" }, { slug: "editor" }]) },
-        "/xmlrpc.php": { status: 405, body: "XML-RPC server accepts POST requests only." },
-      }),
-    );
-    expect(keys(r)).toEqual(["cms.outdated-jquery", "cms.version-disclosed", "cms.wp-user-enum", "cms.wp-xmlrpc"]);
+    const c = ctx({ body });
+    c.fetch = async () => { throw new Error("public check must not make requests"); };
+    expect(keys(await cmsCheck.run(c))).toEqual(["cms.outdated-jquery", "cms.version-disclosed"]);
+  });
+  it("deep wordpress check flags user enumeration + xmlrpc; masks usernames; skips non-WP sites", async () => {
+    const body = `<script src="/wp-includes/js/jquery/jquery.min.js?ver=1.12.4"></script>`;
+    const routes = {
+      "/wp-json/wp/v2/users": { body: JSON.stringify([{ slug: "admin" }, { slug: "editor" }]) },
+      "/xmlrpc.php": { status: 405, body: "XML-RPC server accepts POST requests only." },
+    };
+    expect(await wordpressCheck.run(ctx({ body: "<html>shopify</html>" }, routes))).toEqual([]);
+    const r = await wordpressCheck.run(ctx({ body }, routes));
+    expect(keys(r)).toEqual(["cms.wp-user-enum", "cms.wp-xmlrpc"]);
     const enumF = r.find((f) => f.key === "cms.wp-user-enum")!;
     expect(enumF.evidence).toContain("ad***");
     expect(enumF.evidence).not.toContain("admin");
@@ -154,5 +160,15 @@ describe("registry & catalog", () => {
     ]);
     expect(f.map((x) => x.key)).toEqual(["exposed.env", "headers.nosniff-missing"]);
     expect(f[0].evidence).toBe("b\nc");
+  });
+});
+
+describe("broken HTTPS reporting", () => {
+  it("reports an untrusted certificate instead of 'no HTTPS' when HTTPS exists but fails", () => {
+    const f = toFindings([
+      { key: "tls.no-https", evidence: "served over http" },
+      { key: "tls.cert-invalid", evidence: "HTTPS connection failed" },
+    ]);
+    expect(f.map((x) => x.key)).toEqual(["tls.cert-invalid"]);
   });
 });
