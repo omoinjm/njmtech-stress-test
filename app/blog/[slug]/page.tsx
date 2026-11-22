@@ -8,6 +8,7 @@ import { getUser } from "@/lib/auth";
 import { getPost, readingMinutes, SITE_URL } from "@/lib/blog";
 import { tableOfContents } from "@/lib/blog/pt-utils";
 import { urlForImage } from "@/lib/sanity/image";
+import { pageTitle } from "@/lib/seo";
 
 type Props = PageProps<"/blog/[slug]">;
 
@@ -25,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const url = `${SITE_URL}/blog/${p.slug}`;
   const image = shareImage(p);
   return {
-    title: `${p.seoTitle || p.title} | NJM Tech Security`,
+    title: pageTitle(p.seoTitle || p.title),
     description: p.description,
     alternates: { canonical: url },
     robots: p.isDraft ? { index: false, follow: false } : undefined,
