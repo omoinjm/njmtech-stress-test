@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { BlogCta } from "@/components/blog-cta";
+import { PostImage } from "@/components/post-image";
 import { RichText } from "@/components/portable-text";
 import { getUser } from "@/lib/auth";
 import { getPost, readingMinutes, SITE_URL } from "@/lib/blog";
@@ -120,6 +121,8 @@ export default async function BlogPostPage({ params }: Props) {
         {fmt(p.publishedAt)}
         {p.updatedAt && ` · Updated ${fmt(p.updatedAt)}`} · {readingMinutes(p.chars)} min read
       </p>
+
+      <PostImage image={p.mainImage} alt={p.title} sizes="(min-width: 768px) 768px, 100vw" priority className="mt-6 rounded-xl" />
 
       {toc.length > 2 && (
         <details className="mt-6 rounded-lg border border-black/10 px-4 py-3 text-sm dark:border-white/10" open>
