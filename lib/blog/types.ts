@@ -10,6 +10,7 @@ export type PostCard = {
   author: { name: string; role?: string | null } | null;
   category: { title: string; slug: string } | null;
   chars: number | null;
+  mainImage?: { alt?: string; asset?: { _ref: string } } | null;
 };
 
 export type Post = Omit<PostCard, "author"> & {
@@ -17,7 +18,6 @@ export type Post = Omit<PostCard, "author"> & {
   tags?: string[] | null;
   fixesFindings?: string[] | null;
   author: { name: string; role?: string | null; bio?: string | null; sameAs?: string[] | null; slug?: string } | null;
-  mainImage?: { alt?: string; asset?: { _ref: string } } | null;
   body: PortableTextBlock[];
 };
 

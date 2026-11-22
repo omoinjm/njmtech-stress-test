@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PostImage } from "@/components/post-image";
 import { Card } from "@/components/ui";
 import { publishedPosts, readingMinutes, SITE_URL } from "@/lib/blog";
 
@@ -29,19 +30,24 @@ export default async function BlogIndex() {
           </Link>
         </Card>
       ) : (
-        <ul className="grid gap-4">
-          {posts.map((p) => (
+        <ul className="grid gap-6 sm:grid-cols-2">
+          {posts.map((p, i) => (
             <li key={p.slug}>
-              <Card>
-                <p className="text-xs text-slate-500">
-                  {fmt(p.publishedAt)} · {readingMinutes(p.chars)} min read{p.author ? ` · ${p.author.name}` : ""}
-                  {p.category ? ` · ${p.category.title}` : ""}
-                </p>
-                <h2 className="mt-1 text-xl font-semibold">
-                  <Link href={`/blog/${p.slug}`} className="hover:underline">{p.title}</Link>
-                </h2>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{p.description}</p>
-              </Card>
+              <Link
+                href={`/blog/${p.slug}`}
+                className="group flex h-full flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm transition hover:border-emerald-600/50 hover:shadow-md dark:border-white/10 dark:bg-white/5"
+              >
+                <PostImage image={p.mainImage} alt={p.title} sizes="(min-width: 1024px) 480px, (min-width: 640px) 50vw, 100vw" priority={i === 0} />
+                <div className="flex flex-1 flex-col p-5">
+                  <p className="text-xs text-slate-500">
+                    {fmt(p.publishedAt)} · {readingMinutes(p.chars)} min read
+                    {p.category ? ` · ${p.category.title}` : ""}
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold leading-snug group-hover:underline">{p.title}</h2>
+                  <p className="mt-2 flex-1 text-sm text-slate-600 dark:text-slate-300">{p.description}</p>
+                  <span className="mt-3 text-sm font-semibold text-emerald-600">Read the guide →</span>
+                </div>
+              </Link>
             </li>
           ))}
         </ul>

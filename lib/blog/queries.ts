@@ -8,7 +8,8 @@ const POST_CARD = `
   "isDraft": _originalId in path("drafts.**"),
   "author": author->{name, role},
   "category": category->{title, "slug": slug.current},
-  "chars": length(pt::text(body))
+  "chars": length(pt::text(body)),
+  mainImage{alt, asset}
 `;
 
 export const POSTS_QUERY = `*[_type == "post" && defined(slug.current) && publishedAt <= now()]
@@ -23,7 +24,6 @@ export const POST_QUERY = `*[_type == "post" && slug.current == $slug][0]{
   tags,
   fixesFindings,
   "author": author->{name, role, bio, sameAs, "slug": slug.current},
-  mainImage{alt, asset},
   body[]{
     ...,
     _type == "image" => {..., asset}
